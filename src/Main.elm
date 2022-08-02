@@ -73,6 +73,7 @@ init =
             ]
       , brews = [ Brew (Time.millisToPosix 1000) "Souffle Tropical" 75 ]
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
+      , inventories = [ Inventory (Time.millisToPosix 500) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
       }
     , Cmd.none
     )
@@ -91,11 +92,11 @@ update msg model =
     ( model, Cmd.none )
 
 
-combineAndSort : List Brew -> List Reservation -> List Line
-combineAndSort brews reservations =
+combineAndSort : List Brew -> List Reservation -> List Inventory -> List Line
+combineAndSort brews reservations inventories =
     let
         combined =
-            List.map BrewWrapper brews ++ List.map ReservationWrapper reservations
+            List.map BrewWrapper brews ++ List.map ReservationWrapper reservations ++ List.map InventoryWrapper inventories
 
         sorter item =
             case item of
@@ -104,6 +105,9 @@ combineAndSort brews reservations =
 
                 ReservationWrapper reservation ->
                     reservation.date |> Time.posixToMillis
+
+                InventoryWrapper inventory ->
+                    inventory.date |> Time.posixToMillis
     in
     List.sortBy sorter combined
 
@@ -138,7 +142,7 @@ viewReservationTable model =
                 )
             ]
         , tbody []
-            (combineAndSort model.brews model.reservations |> List.map (viewLine model))
+            (combineAndSort model.brews model.reservations model.inventories |> List.map (viewLine model))
         ]
 
 
@@ -150,6 +154,35 @@ viewLine model line =
 
         ReservationWrapper reservation ->
             viewReservationLine model reservation
+
+        InventoryWrapper inventory ->
+            viewInventoryLine model inventory
+
+
+viewInventoryLine : Model -> Inventory -> Html Msg
+viewInventoryLine model inventory =
+    tr [ class "inventaire" ]
+        (List.concat
+            [ [ td [] [ inventory.date |> formatDate |> text ]
+              , td [] [ "Inventaire" |> text ]
+              , td [] [ "" |> text ]
+              ]
+            , model.beers
+                |> List.map (\beer -> inventory.stock |> Dict.get beer)
+                |> List.map
+                    (\value ->
+                        td []
+                            [ case value of
+                                Nothing ->
+                                    text ""
+
+                                Just v ->
+                                    String.fromInt v |> (++) "=" |> text
+                            ]
+                    )
+            , [ td [ colspan 4 ] [] ]
+            ]
+        )
 
 
 viewBrewLine : Model -> Brew -> Html Msg

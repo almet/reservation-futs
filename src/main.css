@@ -27,5 +27,9 @@ img {
 }
 
 .mise-en-futs {
+  background-color: lightgreen;
+}
+
+.inventaire {
   background-color: aquamarine;
 }
