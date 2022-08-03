@@ -1,9 +1,13 @@
 module Main exposing (..)
 
 import Browser
+import DateRangePicker as Picker
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (class, colspan)
+import Html.Events exposing (onClick)
+import Html.Styled as Styled
+import Select
 import Time
 import Time.Format
 import Time.Format.Config.Config_fr_fr exposing (config)
@@ -18,7 +22,23 @@ type alias Model =
     , brews : List Brew
     , beers : List String
     , inventories : List Inventory
+    , datePicker : Picker.State
+    , selectState : Select.State
+    , items : List (Select.MenuItem LineType)
+    , selectedLineType : Maybe LineType
     }
+
+
+type alias NewLine =
+    { date : Time.Posix
+    , lineType : Maybe LineType
+    }
+
+
+type LineType
+    = LineReservation
+    | LineInventory
+    | LineBrew
 
 
 type alias Order =
@@ -56,8 +76,31 @@ type Line
     | InventoryWrapper Inventory
 
 
-init : ( Model, Cmd Msg )
-init =
+init : () -> ( Model, Cmd Msg )
+init _ =
+    let
+        pickerConfig =
+            Picker.configure
+                (\default ->
+                    { default
+                        | translations =
+                            { close = "Fermer"
+                            , clear = "Effacer"
+                            , apply = "Valider"
+                            , pickStart = "Selectionnez la date de l'évènement"
+                            , pickEnd = "Selectionnez la date de retour"
+                            }
+                        , noRangeCaption = "Selectionnez une date"
+                        , weekdayFormatter = weekdayToString
+                        , monthFormatter = monthToString
+
+                        --, monthFormatter = monthFormatter
+                    }
+                )
+
+        picker =
+            Picker.init pickerConfig Nothing
+    in
     ( { reservations =
             [ Reservation
                 (Time.millisToPosix 0)
@@ -74,9 +117,85 @@ init =
       , brews = [ Brew (Time.millisToPosix 1000) "Souffle Tropical" 75 ]
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
       , inventories = [ Inventory (Time.millisToPosix 500) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
+      , selectState = Select.initState
+      , items =
+            [ Select.basicMenuItem
+                { item = LineReservation, label = "Réservation de fûts" }
+            , Select.basicMenuItem
+                { item = LineBrew, label = "Enfûtage" }
+            , Select.basicMenuItem
+                { item = LineInventory, label = "Inventaire" }
+            ]
+      , selectedLineType = Just LineReservation
+      , datePicker = picker
       }
-    , Cmd.none
+    , Picker.now PickerChanged picker
     )
+
+
+weekdayToString : Time.Weekday -> String
+weekdayToString day =
+    case day of
+        Time.Sun ->
+            "Dim"
+
+        Time.Mon ->
+            "Lu"
+
+        Time.Tue ->
+            "Ma"
+
+        Time.Wed ->
+            "Me"
+
+        Time.Thu ->
+            "Je"
+
+        Time.Fri ->
+            "Ve"
+
+        Time.Sat ->
+            "Sa"
+
+
+monthToString : Time.Month -> String
+monthToString month =
+    case month of
+        Time.Jan ->
+            "Janvier"
+
+        Time.Feb ->
+            "Février"
+
+        Time.Mar ->
+            "Mars"
+
+        Time.Apr ->
+            "Avril"
+
+        Time.May ->
+            "Mai"
+
+        Time.Jun ->
+            "Juin"
+
+        Time.Jul ->
+            "Juillet"
+
+        Time.Aug ->
+            "Août"
+
+        Time.Sep ->
+            "Septembre"
+
+        Time.Oct ->
+            "Octobre"
+
+        Time.Nov ->
+            "Novembre"
+
+        Time.Dec ->
+            "Décembre"
 
 
 
@@ -85,11 +204,45 @@ init =
 
 type Msg
     = NoOp
+    | CreateNewLine
+    | PickerChanged Picker.State
+    | SelectMsg (Select.Msg LineType)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
-    ( model, Cmd.none )
+    case msg of
+        CreateNewLine ->
+            ( model, Cmd.none )
+
+        PickerChanged state ->
+            ( { model | datePicker = state }, Cmd.none )
+
+        SelectMsg selectMsg ->
+            let
+                ( maybeAction, updatedSelectState, selectCmds ) =
+                    Select.update selectMsg model.selectState
+
+                updatedLineType =
+                    case maybeAction of
+                        Just (Select.Select lineType) ->
+                            Just lineType
+
+                        Just Select.ClearSingleSelectItem ->
+                            Nothing
+
+                        _ ->
+                            model.selectedLineType
+            in
+            ( { model
+                | selectState = updatedSelectState
+                , selectedLineType = updatedLineType
+              }
+            , Cmd.map SelectMsg selectCmds
+            )
+
+        NoOp ->
+            ( model, Cmd.none )
 
 
 combineAndSort : List Brew -> List Reservation -> List Inventory -> List Line
@@ -120,8 +273,43 @@ view : Model -> Html Msg
 view model =
     div []
         [ h1 [] [ "Suivi des réservations de fûts" |> text ]
+        , div [ class "container" ]
+            [ div [ class "row" ]
+                [ div [ class "column" ] [ Picker.view PickerChanged model.datePicker ]
+                , div [ class "column" ] [ Html.map SelectMsg (Styled.toUnstyled <| renderSelect model) ]
+                , div [ class "column" ]
+                    [ a
+                        [ class "button", onClick CreateNewLine ]
+                        [ "Ajouter une commande" |> text ]
+                    ]
+                ]
+            ]
         , viewReservationTable model
         ]
+
+
+selectedLineTypeToMenuItem : LineType -> Select.MenuItem LineType
+selectedLineTypeToMenuItem lineType =
+    case lineType of
+        LineBrew ->
+            Select.basicMenuItem { item = LineBrew, label = "Enfûtage" }
+
+        LineReservation ->
+            Select.basicMenuItem { item = LineReservation, label = "Réservation de fûts" }
+
+        LineInventory ->
+            Select.basicMenuItem { item = LineInventory, label = "Inventaire" }
+
+
+renderSelect : Model -> Styled.Html (Select.Msg LineType)
+renderSelect model =
+    Select.view
+        ((Select.single <| Maybe.map selectedLineTypeToMenuItem model.selectedLineType)
+            |> Select.state model.selectState
+            |> Select.menuItems model.items
+            |> Select.placeholder "Quel type d'info ?"
+        )
+        (Select.selectIdentifier "LineTypeSelector")
 
 
 viewReservationTable : Model -> Html Msg
@@ -264,6 +452,11 @@ formatDate date =
     Time.Format.format config "%-d %B %Y" Time.utc date
 
 
+subscriptions : Model -> Sub Msg
+subscriptions { datePicker } =
+    Picker.subscriptions PickerChanged datePicker
+
+
 
 ---- PROGRAM ----
 
@@ -272,7 +465,7 @@ main : Program () Model Msg
 main =
     Browser.element
         { view = view
-        , init = \_ -> init
+        , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }

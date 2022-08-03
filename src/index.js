@@ -1,5 +1,6 @@
 import './main.css';
 import './milligram.css';
+import './datepicker.css';
 import { Elm } from './Main.elm';
 import * as serviceWorker from './serviceWorker';
 

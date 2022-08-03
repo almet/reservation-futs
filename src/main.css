@@ -33,3 +33,12 @@ img {
 .inventaire {
   background-color: aquamarine;
 }
+
+.row {
+  height: 3em;
+  margin-bottom: 1em;
+}
+
+.EDRPPresets {
+  display: none !important;
+}
