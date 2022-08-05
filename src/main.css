@@ -42,3 +42,24 @@ img {
 .EDRPPresets {
   display: none !important;
 }
+
+.EDRP__input {
+  height: 52px !important;
+  border: 2px solid #898BA9 !important;
+  border-radius: 7px !important;
+  font-weight: 400 !important;
+  font-size: inherit !important;
+}
+
+.container {
+  margin: 0 0 !important;
+}
+
+.move {
+  text-align: right;
+}
+
+.total {
+  text-align: left;
+  width: 1em;
+}

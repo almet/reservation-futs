@@ -7,6 +7,7 @@ import Html exposing (..)
 import Html.Attributes exposing (class, colspan)
 import Html.Events exposing (onClick)
 import Html.Styled as Styled
+import List.Extra
 import Select
 import Time
 import Time.Format
@@ -103,7 +104,7 @@ init _ =
     in
     ( { reservations =
             [ Reservation
-                (Time.millisToPosix 0)
+                (Time.millisToPosix 1659625547126)
                 "Alexis"
                 "0766554900"
                 (Dict.fromList
@@ -114,9 +115,9 @@ init _ =
                 0
                 False
             ]
-      , brews = [ Brew (Time.millisToPosix 1000) "Souffle Tropical" 75 ]
+      , brews = [ Brew (Time.millisToPosix 1659020747126) "Souffle Tropical" 75 ]
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
-      , inventories = [ Inventory (Time.millisToPosix 500) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
+      , inventories = [ Inventory (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
       , selectState = Select.initState
       , items =
             [ Select.basicMenuItem
@@ -265,6 +266,44 @@ combineAndSort brews reservations inventories =
     List.sortBy sorter combined
 
 
+computeTotals : List String -> List Line -> List (Dict String Int)
+computeTotals beers lines =
+    let
+        firstAccValue =
+            beers |> List.map (\beer -> ( beer, 0 )) |> Dict.fromList
+
+        accumulator currentLine previousLine =
+            case currentLine of
+                BrewWrapper brew ->
+                    previousLine
+                        |> Dict.map
+                            (\key previousValue ->
+                                (+) previousValue
+                                    (if brew.beer == key then
+                                        brew.quantity
+
+                                     else
+                                        0
+                                    )
+                            )
+
+                ReservationWrapper reservation ->
+                    previousLine |> Dict.map (\key previousValue -> (-) previousValue (Dict.get key reservation.order |> Maybe.withDefault 0))
+
+                InventoryWrapper inventory ->
+                    previousLine |> Dict.map (\key previousValue -> Dict.get key inventory.stock |> Maybe.withDefault previousValue)
+
+        totals =
+            List.Extra.scanl accumulator firstAccValue lines |> List.tail
+    in
+    case totals of
+        Nothing ->
+            []
+
+        Just values ->
+            values
+
+
 
 ---- VIEW ----
 
@@ -288,6 +327,17 @@ view model =
         ]
 
 
+renderSelect : Model -> Styled.Html (Select.Msg LineType)
+renderSelect model =
+    Select.view
+        ((Select.single <| Maybe.map selectedLineTypeToMenuItem model.selectedLineType)
+            |> Select.state model.selectState
+            |> Select.menuItems model.items
+            |> Select.placeholder "Quel type d'info ?"
+        )
+        (Select.selectIdentifier "LineTypeSelector")
+
+
 selectedLineTypeToMenuItem : LineType -> Select.MenuItem LineType
 selectedLineTypeToMenuItem lineType =
     case lineType of
@@ -301,65 +351,61 @@ selectedLineTypeToMenuItem lineType =
             Select.basicMenuItem { item = LineInventory, label = "Inventaire" }
 
 
-renderSelect : Model -> Styled.Html (Select.Msg LineType)
-renderSelect model =
-    Select.view
-        ((Select.single <| Maybe.map selectedLineTypeToMenuItem model.selectedLineType)
-            |> Select.state model.selectState
-            |> Select.menuItems model.items
-            |> Select.placeholder "Quel type d'info ?"
-        )
-        (Select.selectIdentifier "LineTypeSelector")
-
-
 viewReservationTable : Model -> Html Msg
 viewReservationTable model =
     let
         headerLine header =
             th [] [ header |> text ]
+
+        lines =
+            combineAndSort model.brews model.reservations model.inventories
+
+        linesWithTotals =
+            List.map2 Tuple.pair lines (computeTotals model.beers lines)
     in
     table [ class "table" ]
         [ thead []
             [ tr []
                 (List.concat
-                    [ [ "Date", "Personne", "Notes" ]
-                    , model.beers
-                    , [ "Tireuse ?", "Gobelets", "Fait" ]
+                    [ [ "Date", "Personne" ] |> List.map headerLine
+                    , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ text beer ])
+                    , [ "Notes", "Tireuse ?", "Gobelets", "Fait" ] |> List.map headerLine
                     ]
-                    |> List.map headerLine
                 )
             ]
         , tbody []
-            (combineAndSort model.brews model.reservations model.inventories |> List.map (viewLine model))
+            (linesWithTotals |> List.map (viewLine model))
         ]
 
 
-viewLine : Model -> Line -> Html Msg
-viewLine model line =
+viewLine : Model -> ( Line, Dict String Int ) -> Html Msg
+viewLine model ( line, totals ) =
     case line of
         BrewWrapper brew ->
-            viewBrewLine model brew
+            viewBrewLine model brew totals
 
         ReservationWrapper reservation ->
-            viewReservationLine model reservation
+            viewReservationLine model reservation totals
 
         InventoryWrapper inventory ->
-            viewInventoryLine model inventory
+            viewInventoryLine model inventory totals
 
 
-viewInventoryLine : Model -> Inventory -> Html Msg
-viewInventoryLine model inventory =
+viewInventoryLine : Model -> Inventory -> Dict String Int -> Html Msg
+viewInventoryLine model inventory totals =
     tr [ class "inventaire" ]
         (List.concat
             [ [ td [] [ inventory.date |> formatDate |> text ]
               , td [] [ "Inventaire" |> text ]
-              , td [] [ "" |> text ]
               ]
             , model.beers
-                |> List.map (\beer -> inventory.stock |> Dict.get beer)
                 |> List.map
-                    (\value ->
-                        td []
+                    (\beer ->
+                        let
+                            value =
+                                inventory.stock |> Dict.get beer
+                        in
+                        [ td [ class "move" ]
                             [ case value of
                                 Nothing ->
                                     text ""
@@ -367,48 +413,65 @@ viewInventoryLine model inventory =
                                 Just v ->
                                     String.fromInt v |> (++) "=" |> text
                             ]
+                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                        ]
                     )
-            , [ td [ colspan 4 ] [] ]
+                |> List.concat
+            , [ td [ colspan 6 ] [] ]
             ]
         )
 
 
-viewBrewLine : Model -> Brew -> Html Msg
-viewBrewLine model brew =
+viewBrewLine : Model -> Brew -> Dict String Int -> Html Msg
+viewBrewLine model brew totals =
     tr [ class "mise-en-futs" ]
         (List.concat
             [ [ td [] [ brew.date |> formatDate |> text ]
-              , td [] [ "Mise en fûts" |> text ]
-              , td [] [ brew.beer |> text ]
+              , td [] [ "Mise en fûts " ++ brew.beer |> text ]
               ]
             , model.beers
                 |> List.map
-                    (\b ->
-                        if b == brew.beer then
-                            brew.quantity
+                    (\beer ->
+                        let
+                            quantity =
+                                if beer == brew.beer then
+                                    brew.quantity
 
-                        else
-                            0
+                                else
+                                    0
+                        in
+                        [ td [ class "move" ]
+                            [ case quantity of
+                                0 ->
+                                    text ""
+
+                                _ ->
+                                    quantity |> String.fromInt |> (++) "+" |> text
+                            ]
+                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                        ]
                     )
-                |> List.map (\x -> td [] [ x |> String.fromInt |> (++) "+" |> text ])
-            , [ td [ colspan 4 ] [] ]
+                |> List.concat
+            , [ td [ colspan 6 ] [] ]
             ]
         )
 
 
-viewReservationLine : Model -> Reservation -> Html Msg
-viewReservationLine model reservation =
+viewReservationLine : Model -> Reservation -> Dict String Int -> Html Msg
+viewReservationLine model reservation totals =
     tr []
         (List.concat
             [ [ td [] [ reservation.date |> formatDate |> text ]
               , td [] [ reservation.person |> text ]
-              , td [] [ reservation.notes |> text ]
               ]
             , model.beers
-                |> List.map (\beer -> reservation.order |> Dict.get beer)
                 |> List.map
-                    (\value ->
-                        td []
+                    (\beer ->
+                        let
+                            value =
+                                reservation.order |> Dict.get beer
+                        in
+                        [ td [ class "move" ]
                             [ case value of
                                 Nothing ->
                                     text ""
@@ -416,8 +479,13 @@ viewReservationLine model reservation =
                                 Just v ->
                                     String.fromInt v |> (++) "-" |> text
                             ]
+                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                        ]
                     )
+                |> List.concat
             , [ td []
+                    [ reservation.notes |> text ]
+              , td []
                     [ text
                         (if reservation.tap then
                             "Oui"
