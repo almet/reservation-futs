@@ -4,16 +4,14 @@ import Browser
 import DateRangePicker as Picker
 import Dict exposing (Dict)
 import Html exposing (..)
-import Html.Attributes exposing (checked, class, colspan, selected, type_, value)
-import Html.Events exposing (onClick)
+import Html.Attributes exposing (..)
+import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra exposing (onChange)
 import Html.Styled as Styled
 import List.Extra
 import Random exposing (Seed, initialSeed, step)
 import Select
 import Time
-import Time.Format
-import Time.Format.Config.Config_fr_fr exposing (config)
 import Utils exposing (..)
 import Uuid
 
@@ -156,9 +154,12 @@ type Msg
     | PickerChanged Picker.State
     | SelectMsg (Select.Msg LineType)
     | NewUuid
+    | BrewUpdateDate Int String
     | BrewUpdateSelectedBeer Int String
     | BrewUpdateQuantity Int String
+    | InventoryUpdateDate Int String
     | InventoryUpdateQuantity Int String String
+    | ReservationUpdateDate Int String
     | ReservationUpdateQuantity Int String String
     | ReservationUpdateName Int String
     | ReservationUpdateNotes Int String
@@ -173,7 +174,7 @@ update msg model =
         NewUuid ->
             let
                 ( newUuid, newSeed ) =
-                    step Uuid.uuidGenerator model.currentSeed
+                    Random.step Uuid.uuidGenerator model.currentSeed
             in
             ( { model
                 | currentUuid = Just newUuid
@@ -212,79 +213,144 @@ update msg model =
             )
 
         BrewUpdateSelectedBeer id selectedBeer ->
-            let
-                newBrews =
-                    model.brews |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | beer = selectedBeer })
-            in
-            ( { model | brews = newBrews }, Cmd.none )
+            ( { model
+                | brews =
+                    model.brews
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | beer = selectedBeer })
+              }
+            , Cmd.none
+            )
 
         BrewUpdateQuantity id quantityStr ->
-            let
-                quantity =
-                    quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0
+            ( { model
+                | brews =
+                    model.brews
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | quantity = quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0 })
+              }
+            , Cmd.none
+            )
 
-                newBrews =
-                    model.brews |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | quantity = quantity })
-            in
-            ( { model | brews = newBrews }, Cmd.none )
+        BrewUpdateDate id date ->
+            ( { model
+                | brews =
+                    model.brews
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | date = date |> dateToPosix })
+              }
+            , Cmd.none
+            )
 
         InventoryUpdateQuantity id beer quantityStr ->
             let
                 quantity =
                     quantityStr |> String.replace "=" "" |> String.toInt |> Maybe.withDefault 0
-
-                newInventories =
-                    model.inventories |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
             in
-            ( { model | inventories = newInventories }, Cmd.none )
+            ( { model
+                | inventories =
+                    model.inventories
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
+              }
+            , Cmd.none
+            )
+
+        InventoryUpdateDate id date ->
+            ( { model
+                | inventories =
+                    model.inventories
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | date = date |> dateToPosix })
+              }
+            , Cmd.none
+            )
 
         ReservationUpdateQuantity id beer quantityStr ->
             let
                 quantity =
                     quantityStr |> String.replace "-" "" |> String.toInt |> Maybe.withDefault 0
-
-                newReservations =
-                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | order = x.order |> Dict.insert beer quantity })
             in
-            ( { model | reservations = newReservations }, Cmd.none )
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | order = x.order |> Dict.insert beer quantity })
+              }
+            , Cmd.none
+            )
 
         ReservationUpdateName id name ->
-            let
-                newReservations =
-                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | name = name })
-            in
-            ( { model | reservations = newReservations }, Cmd.none )
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | name = name })
+              }
+            , Cmd.none
+            )
 
         ReservationUpdateNotes id notes ->
             ( { model
-                | reservations = model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | notes = notes })
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | notes = notes })
               }
             , Cmd.none
             )
 
         ReservationUpdateTap id tap ->
-            let
-                newReservations =
-                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | tap = tap })
-            in
-            ( { model | reservations = newReservations }, Cmd.none )
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | tap = tap })
+              }
+            , Cmd.none
+            )
 
         ReservationUpdateCups id cups ->
-            let
-                value =
-                    cups |> String.toInt |> Maybe.withDefault 0
-
-                newReservations =
-                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | cups = value })
-            in
-            ( { model | reservations = newReservations }, Cmd.none )
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | cups = cups |> String.toInt |> Maybe.withDefault 0 })
+              }
+            , Cmd.none
+            )
 
         ReservationUpdateDone id ->
-            let
-                newReservations =
-                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | done = not x.done })
-            in
-            ( { model | reservations = newReservations }, Cmd.none )
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | done = not x.done })
+              }
+            , Cmd.none
+            )
+
+        ReservationUpdateDate id date ->
+            ( { model
+                | reservations =
+                    model.reservations
+                        |> List.Extra.updateIf
+                            (\x -> x.id == id)
+                            (\x -> { x | date = date |> dateToPosix })
+              }
+            , Cmd.none
+            )
 
         NoOp ->
             ( model, Cmd.none )
@@ -435,11 +501,16 @@ viewLine model ( line, totals ) =
             viewInventoryLine model inventory totals
 
 
+renderDateInput : Int -> Time.Posix -> (String -> Msg) -> Html Msg
+renderDateInput uid date event =
+    input [ id (uid |> String.fromInt), type_ "date", value (date |> formatDate), onInput event, required True ] []
+
+
 viewInventoryLine : Model -> Inventory -> Dict String Int -> Html Msg
 viewInventoryLine model inventory totals =
     tr [ class "inventaire" ]
         (List.concat
-            [ [ td [] [ inventory.date |> formatDate |> text ]
+            [ [ td [] [ renderDateInput inventory.id inventory.date (InventoryUpdateDate inventory.id) ]
               , td [] [ "Inventaire" |> text ]
               ]
             , model.beers
@@ -471,7 +542,7 @@ viewBrewLine : Model -> Brew -> Dict String Int -> Html Msg
 viewBrewLine model brew totals =
     tr [ class "mise-en-futs" ]
         (List.concat
-            [ [ td [] [ brew.date |> formatDate |> text ]
+            [ [ td [] [ renderDateInput brew.id brew.date (BrewUpdateDate brew.id) ]
               , td []
                     [ select [ onChange (BrewUpdateSelectedBeer brew.id) ]
                         (model.beers
@@ -521,7 +592,7 @@ viewReservationLine : Model -> Reservation -> Dict String Int -> Html Msg
 viewReservationLine model reservation totals =
     tr []
         (List.concat
-            [ [ td [] [ reservation.date |> formatDate |> text ]
+            [ [ td [] [ renderDateInput reservation.id reservation.date (ReservationUpdateDate reservation.id) ]
               , td [] [ input [ type_ "text", value reservation.name, onChange (ReservationUpdateName reservation.id) ] [] ]
               ]
             , model.beers
@@ -575,11 +646,6 @@ viewReservationLine model reservation totals =
               ]
             ]
         )
-
-
-formatDate : Time.Posix -> String
-formatDate date =
-    Time.Format.format config "%-d %B %Y" Time.utc date
 
 
 subscriptions : Model -> Sub Msg

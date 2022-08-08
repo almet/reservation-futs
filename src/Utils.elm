@@ -1,6 +1,9 @@
 module Utils exposing (..)
 
+import Iso8601
 import Time
+import Time.Format
+import Time.Format.Config.Config_fr_fr exposing (config)
 
 
 weekdayToString : Time.Weekday -> String
@@ -66,3 +69,13 @@ monthToString month =
 
         Time.Dec ->
             "Décembre"
+
+
+formatDate : Time.Posix -> String
+formatDate date =
+    Time.Format.format config "%Y-%m-%d" Time.utc date
+
+
+dateToPosix : String -> Time.Posix
+dateToPosix input =
+    input |> Iso8601.toTime |> Result.withDefault (Time.millisToPosix 0)
