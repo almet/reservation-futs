@@ -4,14 +4,18 @@ import Browser
 import DateRangePicker as Picker
 import Dict exposing (Dict)
 import Html exposing (..)
-import Html.Attributes exposing (class, colspan)
+import Html.Attributes exposing (checked, class, colspan, selected, type_, value)
 import Html.Events exposing (onClick)
+import Html.Events.Extra exposing (onChange)
 import Html.Styled as Styled
 import List.Extra
+import Random exposing (Seed, initialSeed, step)
 import Select
 import Time
 import Time.Format
 import Time.Format.Config.Config_fr_fr exposing (config)
+import Utils exposing (..)
+import Uuid
 
 
 
@@ -27,6 +31,8 @@ type alias Model =
     , selectState : Select.State
     , items : List (Select.MenuItem LineType)
     , selectedLineType : Maybe LineType
+    , currentSeed : Seed
+    , currentUuid : Maybe Uuid.Uuid
     }
 
 
@@ -47,14 +53,16 @@ type alias Order =
 
 
 type alias Inventory =
-    { date : Time.Posix
+    { id : Int
+    , date : Time.Posix
     , stock : Dict String Int
     }
 
 
 type alias Reservation =
-    { date : Time.Posix
-    , person : String
+    { id : Int
+    , date : Time.Posix
+    , name : String
     , contact : String
     , order : Order
     , tap : Bool
@@ -65,7 +73,8 @@ type alias Reservation =
 
 
 type alias Brew =
-    { date : Time.Posix
+    { id : Int
+    , date : Time.Posix
     , beer : String
     , quantity : Int
     }
@@ -77,8 +86,8 @@ type Line
     | InventoryWrapper Inventory
 
 
-init : () -> ( Model, Cmd Msg )
-init _ =
+init : Int -> ( Model, Cmd Msg )
+init seed =
     let
         pickerConfig =
             Picker.configure
@@ -104,6 +113,7 @@ init _ =
     in
     ( { reservations =
             [ Reservation
+                1
                 (Time.millisToPosix 1659625547126)
                 "Alexis"
                 "0766554900"
@@ -115,9 +125,9 @@ init _ =
                 0
                 False
             ]
-      , brews = [ Brew (Time.millisToPosix 1659020747126) "Souffle Tropical" 75 ]
+      , brews = [ Brew 2 (Time.millisToPosix 1659020747126) "Nouveau Monde" 75 ]
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
-      , inventories = [ Inventory (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
+      , inventories = [ Inventory 3 (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
       , selectState = Select.initState
       , items =
             [ Select.basicMenuItem
@@ -129,74 +139,11 @@ init _ =
             ]
       , selectedLineType = Just LineReservation
       , datePicker = picker
+      , currentSeed = initialSeed seed
+      , currentUuid = Nothing
       }
     , Picker.now PickerChanged picker
     )
-
-
-weekdayToString : Time.Weekday -> String
-weekdayToString day =
-    case day of
-        Time.Sun ->
-            "Dim"
-
-        Time.Mon ->
-            "Lu"
-
-        Time.Tue ->
-            "Ma"
-
-        Time.Wed ->
-            "Me"
-
-        Time.Thu ->
-            "Je"
-
-        Time.Fri ->
-            "Ve"
-
-        Time.Sat ->
-            "Sa"
-
-
-monthToString : Time.Month -> String
-monthToString month =
-    case month of
-        Time.Jan ->
-            "Janvier"
-
-        Time.Feb ->
-            "Février"
-
-        Time.Mar ->
-            "Mars"
-
-        Time.Apr ->
-            "Avril"
-
-        Time.May ->
-            "Mai"
-
-        Time.Jun ->
-            "Juin"
-
-        Time.Jul ->
-            "Juillet"
-
-        Time.Aug ->
-            "Août"
-
-        Time.Sep ->
-            "Septembre"
-
-        Time.Oct ->
-            "Octobre"
-
-        Time.Nov ->
-            "Novembre"
-
-        Time.Dec ->
-            "Décembre"
 
 
 
@@ -208,11 +155,33 @@ type Msg
     | CreateNewLine
     | PickerChanged Picker.State
     | SelectMsg (Select.Msg LineType)
+    | NewUuid
+    | BrewUpdateSelectedBeer Int String
+    | BrewUpdateQuantity Int String
+    | InventoryUpdateQuantity Int String String
+    | ReservationUpdateQuantity Int String String
+    | ReservationUpdateName Int String
+    | ReservationUpdateNotes Int String
+    | ReservationUpdateTap Int Bool
+    | ReservationUpdateCups Int String
+    | ReservationUpdateDone Int
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        NewUuid ->
+            let
+                ( newUuid, newSeed ) =
+                    step Uuid.uuidGenerator model.currentSeed
+            in
+            ( { model
+                | currentUuid = Just newUuid
+                , currentSeed = newSeed
+              }
+            , Cmd.none
+            )
+
         CreateNewLine ->
             ( model, Cmd.none )
 
@@ -241,6 +210,81 @@ update msg model =
               }
             , Cmd.map SelectMsg selectCmds
             )
+
+        BrewUpdateSelectedBeer id selectedBeer ->
+            let
+                newBrews =
+                    model.brews |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | beer = selectedBeer })
+            in
+            ( { model | brews = newBrews }, Cmd.none )
+
+        BrewUpdateQuantity id quantityStr ->
+            let
+                quantity =
+                    quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0
+
+                newBrews =
+                    model.brews |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | quantity = quantity })
+            in
+            ( { model | brews = newBrews }, Cmd.none )
+
+        InventoryUpdateQuantity id beer quantityStr ->
+            let
+                quantity =
+                    quantityStr |> String.replace "=" "" |> String.toInt |> Maybe.withDefault 0
+
+                newInventories =
+                    model.inventories |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
+            in
+            ( { model | inventories = newInventories }, Cmd.none )
+
+        ReservationUpdateQuantity id beer quantityStr ->
+            let
+                quantity =
+                    quantityStr |> String.replace "-" "" |> String.toInt |> Maybe.withDefault 0
+
+                newReservations =
+                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | order = x.order |> Dict.insert beer quantity })
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
+
+        ReservationUpdateName id name ->
+            let
+                newReservations =
+                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | name = name })
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
+
+        ReservationUpdateNotes id notes ->
+            ( { model
+                | reservations = model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | notes = notes })
+              }
+            , Cmd.none
+            )
+
+        ReservationUpdateTap id tap ->
+            let
+                newReservations =
+                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | tap = tap })
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
+
+        ReservationUpdateCups id cups ->
+            let
+                value =
+                    cups |> String.toInt |> Maybe.withDefault 0
+
+                newReservations =
+                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | cups = value })
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
+
+        ReservationUpdateDone id ->
+            let
+                newReservations =
+                    model.reservations |> List.Extra.updateIf (\x -> x.id == id) (\x -> { x | done = not x.done })
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
 
         NoOp ->
             ( model, Cmd.none )
@@ -318,7 +362,7 @@ view model =
                 , div [ class "column" ] [ Html.map SelectMsg (Styled.toUnstyled <| renderSelect model) ]
                 , div [ class "column" ]
                     [ a
-                        [ class "button", onClick CreateNewLine ]
+                        [ class "button ", onClick CreateNewLine ]
                         [ "Ajouter une commande" |> text ]
                     ]
                 ]
@@ -367,9 +411,9 @@ viewReservationTable model =
         [ thead []
             [ tr []
                 (List.concat
-                    [ [ "Date", "Personne" ] |> List.map headerLine
-                    , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ text beer ])
-                    , [ "Notes", "Tireuse ?", "Gobelets", "Fait" ] |> List.map headerLine
+                    [ [ "Date", "Nom" ] |> List.map headerLine
+                    , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
+                    , [ "Notes", "Tireuse", "Gobelets", "Fait" ] |> List.map headerLine
                     ]
                 )
             ]
@@ -402,18 +446,19 @@ viewInventoryLine model inventory totals =
                 |> List.map
                     (\beer ->
                         let
-                            value =
-                                inventory.stock |> Dict.get beer
-                        in
-                        [ td [ class "move" ]
-                            [ case value of
-                                Nothing ->
-                                    text ""
+                            displayableValue =
+                                case inventory.stock |> Dict.get beer of
+                                    Nothing ->
+                                        ""
 
-                                Just v ->
-                                    String.fromInt v |> (++) "=" |> text
-                            ]
-                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                                    Just v ->
+                                        "=" ++ String.fromInt v
+
+                            total =
+                                totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
+                        in
+                        [ td [ class "move" ] [ input [ type_ "text", value displayableValue, onChange (InventoryUpdateQuantity inventory.id beer) ] [] ]
+                        , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
                         ]
                     )
                 |> List.concat
@@ -427,7 +472,23 @@ viewBrewLine model brew totals =
     tr [ class "mise-en-futs" ]
         (List.concat
             [ [ td [] [ brew.date |> formatDate |> text ]
-              , td [] [ "Mise en fûts " ++ brew.beer |> text ]
+              , td []
+                    [ select [ onChange (BrewUpdateSelectedBeer brew.id) ]
+                        (model.beers
+                            |> List.map
+                                (\beer ->
+                                    let
+                                        isSelected =
+                                            if beer == brew.beer then
+                                                True
+
+                                            else
+                                                False
+                                    in
+                                    option [ value beer, selected isSelected ] [ beer |> text ]
+                                )
+                        )
+                    ]
               ]
             , model.beers
                 |> List.map
@@ -441,14 +502,13 @@ viewBrewLine model brew totals =
                                     0
                         in
                         [ td [ class "move" ]
-                            [ case quantity of
-                                0 ->
-                                    text ""
+                            [ if beer == brew.beer then
+                                input [ type_ "text", value ("+" ++ String.fromInt quantity), onChange (BrewUpdateQuantity brew.id) ] []
 
-                                _ ->
-                                    quantity |> String.fromInt |> (++) "+" |> text
+                              else
+                                "" |> text
                             ]
-                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                        , td [ class "total" ] [ ("(" ++ (totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt) ++ ")") |> text ]
                         ]
                     )
                 |> List.concat
@@ -462,29 +522,33 @@ viewReservationLine model reservation totals =
     tr []
         (List.concat
             [ [ td [] [ reservation.date |> formatDate |> text ]
-              , td [] [ reservation.person |> text ]
+              , td [] [ input [ type_ "text", value reservation.name, onChange (ReservationUpdateName reservation.id) ] [] ]
               ]
             , model.beers
                 |> List.map
                     (\beer ->
                         let
-                            value =
-                                reservation.order |> Dict.get beer
-                        in
-                        [ td [ class "move" ]
-                            [ case value of
-                                Nothing ->
-                                    text ""
+                            stringValue =
+                                case reservation.order |> Dict.get beer of
+                                    Nothing ->
+                                        ""
 
-                                Just v ->
-                                    String.fromInt v |> (++) "-" |> text
-                            ]
-                        , td [ class "total" ] [ totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt |> text ]
+                                    Just 0 ->
+                                        "0"
+
+                                    Just v ->
+                                        String.fromInt v |> (++) "-"
+
+                            total =
+                                totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
+                        in
+                        [ td [ class "move" ] [ input [ type_ "text", value stringValue, onChange (ReservationUpdateQuantity reservation.id beer) ] [] ]
+                        , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
                         ]
                     )
                 |> List.concat
             , [ td []
-                    [ reservation.notes |> text ]
+                    [ input [ type_ "text", value reservation.notes, onChange (ReservationUpdateNotes reservation.id) ] [] ]
               , td []
                     [ text
                         (if reservation.tap then
@@ -495,21 +559,19 @@ viewReservationLine model reservation totals =
                         )
                     ]
               , td []
-                    [ case reservation.cups of
-                        0 ->
-                            text "Non"
+                    [ let
+                        cups =
+                            case reservation.cups of
+                                0 ->
+                                    "Non"
 
-                        _ ->
-                            reservation.cups |> String.fromInt |> text
+                                _ ->
+                                    reservation.cups |> String.fromInt
+                      in
+                      input [ type_ "text", value cups, onChange (ReservationUpdateCups reservation.id) ] []
                     ]
               , td []
-                    [ case reservation.done of
-                        True ->
-                            text "✓"
-
-                        _ ->
-                            text ""
-                    ]
+                    [ input [ type_ "checkbox", checked reservation.done, onClick (ReservationUpdateDone reservation.id) ] [] ]
               ]
             ]
         )
@@ -529,7 +591,7 @@ subscriptions { datePicker } =
 ---- PROGRAM ----
 
 
-main : Program () Model Msg
+main : Program Int Model Msg
 main =
     Browser.element
         { view = view

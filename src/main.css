@@ -59,7 +59,16 @@ img {
   text-align: right;
 }
 
+.move>input {
+  text-align: right;
+  border: none !important;
+}
+
 .total {
   text-align: left;
   width: 1em;
+}
+
+td>input {
+  border: none !important;
 }
