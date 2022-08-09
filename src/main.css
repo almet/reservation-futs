@@ -17,6 +17,11 @@ body {
   padding: 1em;
 }
 
+.wrapper {
+  max-width: 150rem;
+  margin: auto;
+}
+
 h1 {
   font-size: 30px;
 }
@@ -71,4 +76,8 @@ img {
 
 td>input {
   border: none !important;
+}
+
+.select-new-line {
+  width: inherit;
 }

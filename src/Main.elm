@@ -7,9 +7,9 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra exposing (onChange)
 import Html.Keyed as Keyed
-import Html.Styled as Styled
 import List.Extra
-import Random exposing (Seed, initialSeed, step)
+import Random exposing (Seed, initialSeed)
+import Task
 import Time
 import Utils exposing (..)
 import Uuid
@@ -27,6 +27,7 @@ type alias Model =
     , currentSeed : Seed
     , currentUuid : Maybe Uuid.Uuid
     , displayNewLineSelect : Bool
+    , now : Time.Posix
     }
 
 
@@ -47,14 +48,14 @@ type alias Order =
 
 
 type alias Inventory =
-    { id : Int
+    { id : Maybe Uuid.Uuid
     , date : Time.Posix
     , stock : Dict String Int
     }
 
 
 type alias Reservation =
-    { id : Int
+    { id : Maybe Uuid.Uuid
     , date : Time.Posix
     , name : String
     , contact : String
@@ -67,7 +68,7 @@ type alias Reservation =
 
 
 type alias Brew =
-    { id : Int
+    { id : Maybe Uuid.Uuid
     , date : Time.Posix
     , beer : String
     , quantity : Int
@@ -84,7 +85,7 @@ init : Int -> ( Model, Cmd Msg )
 init seed =
     ( { reservations =
             [ Reservation
-                1
+                (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B76")
                 (Time.millisToPosix 1659625547126)
                 "Alexis"
                 "0766554900"
@@ -96,14 +97,15 @@ init seed =
                 0
                 False
             ]
-      , brews = [ Brew 2 (Time.millisToPosix 1659020747126) "Nouveau Monde" 75 ]
+      , brews = [ Brew (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B77") (Time.millisToPosix 1659020747126) "Nouveau Monde" 75 ]
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
-      , inventories = [ Inventory 3 (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
+      , inventories = [ Inventory (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B78") (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
       , currentSeed = initialSeed seed
       , currentUuid = Nothing
       , displayNewLineSelect = False
+      , now = Time.millisToPosix 0
       }
-    , Cmd.none
+    , getTime
     )
 
 
@@ -114,25 +116,29 @@ init seed =
 type Msg
     = NoOp
     | NewUuid
+    | OnTime Time.Posix
     | DisplayNewLineSelect Bool
     | CreateNewLine String
-    | BrewUpdateDate Int String
-    | BrewUpdateSelectedBeer Int String
-    | ReservationUpdateDate Int String
-    | BrewUpdateQuantity Int String
-    | InventoryUpdateDate Int String
-    | InventoryUpdateQuantity Int String String
-    | ReservationUpdateQuantity Int String String
-    | ReservationUpdateName Int String
-    | ReservationUpdateNotes Int String
-    | ReservationUpdateTap Int Bool
-    | ReservationUpdateCups Int String
-    | ReservationUpdateDone Int
+    | BrewUpdateDate Uuid.Uuid String
+    | BrewUpdateSelectedBeer Uuid.Uuid String
+    | ReservationUpdateDate Uuid.Uuid String
+    | BrewUpdateQuantity Uuid.Uuid String
+    | InventoryUpdateDate Uuid.Uuid String
+    | InventoryUpdateQuantity Uuid.Uuid String String
+    | ReservationUpdateQuantity Uuid.Uuid String String
+    | ReservationUpdateName Uuid.Uuid String
+    | ReservationUpdateNotes Uuid.Uuid String
+    | ReservationUpdateTap Uuid.Uuid Bool
+    | ReservationUpdateCups Uuid.Uuid String
+    | ReservationUpdateDone Uuid.Uuid
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        OnTime time ->
+            ( { model | now = time }, Cmd.none )
+
         NewUuid ->
             let
                 ( newUuid, newSeed ) =
@@ -149,16 +155,65 @@ update msg model =
             ( { model | displayNewLineSelect = value }, Cmd.none )
 
         CreateNewLine lineType ->
-            --case lineType of
-            --    "Enfûtage" -> {model | brews = model.brews ++ [Brew ]}
-            ( model, Cmd.none )
+            let
+                ( model_, _ ) =
+                    update NewUuid model
+
+                newModel =
+                    case lineType of
+                        "brew" ->
+                            { model_
+                                | brews =
+                                    model_.brews
+                                        ++ [ Brew
+                                                model_.currentUuid
+                                                model_.now
+                                                (model_.beers |> List.head |> Maybe.withDefault "")
+                                                75
+                                           ]
+                            }
+
+                        "inventory" ->
+                            { model_
+                                | inventories =
+                                    model_.inventories
+                                        ++ [ Inventory
+                                                model_.currentUuid
+                                                model_.now
+                                                (Dict.fromList
+                                                    (model_.beers |> List.map (\x -> ( x, 0 )))
+                                                )
+                                           ]
+                            }
+
+                        "reservation" ->
+                            { model_
+                                | reservations =
+                                    model_.reservations
+                                        ++ [ Reservation
+                                                model_.currentUuid
+                                                model_.now
+                                                ""
+                                                ""
+                                                (Dict.fromList (model_.beers |> List.map (\x -> ( x, 0 ))))
+                                                True
+                                                ""
+                                                0
+                                                False
+                                           ]
+                            }
+
+                        _ ->
+                            model_
+            in
+            ( newModel, Cmd.none )
 
         BrewUpdateSelectedBeer id selectedBeer ->
             ( { model
                 | brews =
                     model.brews
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | beer = selectedBeer })
               }
             , Cmd.none
@@ -169,7 +224,7 @@ update msg model =
                 | brews =
                     model.brews
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | quantity = quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0 })
               }
             , Cmd.none
@@ -180,7 +235,7 @@ update msg model =
                 | brews =
                     model.brews
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | date = date |> dateToPosix })
               }
             , Cmd.none
@@ -195,7 +250,7 @@ update msg model =
                 | inventories =
                     model.inventories
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
               }
             , Cmd.none
@@ -206,7 +261,7 @@ update msg model =
                 | inventories =
                     model.inventories
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | date = date |> dateToPosix })
               }
             , Cmd.none
@@ -221,7 +276,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | order = x.order |> Dict.insert beer quantity })
               }
             , Cmd.none
@@ -232,7 +287,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | name = name })
               }
             , Cmd.none
@@ -243,7 +298,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | notes = notes })
               }
             , Cmd.none
@@ -254,7 +309,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | tap = tap })
               }
             , Cmd.none
@@ -265,7 +320,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | cups = cups |> String.toInt |> Maybe.withDefault 0 })
               }
             , Cmd.none
@@ -276,7 +331,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | done = not x.done })
               }
             , Cmd.none
@@ -287,7 +342,7 @@ update msg model =
                 | reservations =
                     model.reservations
                         |> List.Extra.updateIf
-                            (\x -> x.id == id)
+                            (\x -> x.id == Just id)
                             (\x -> { x | date = date |> dateToPosix })
               }
             , Cmd.none
@@ -361,24 +416,23 @@ computeTotals beers lines =
 
 view : Model -> Html Msg
 view model =
-    div []
-        [ h1 [] [ "Suivi des réservations de fûts" |> text ]
-        , renderCreationButton model
+    div [ class "wrapper" ]
+        [ h1 [] [ "Suivi des réservations de fûts ⛽ " |> text ]
+        , renderCreationButton
         , renderReservationTable model
         ]
 
 
-renderCreationButton : Model -> Html Msg
-renderCreationButton model =
-    case model.displayNewLineSelect of
-        False ->
-            a [ class "button ", onClick (DisplayNewLineSelect True) ] [ "Ajouter une commande" |> text ]
-
-        True ->
-            select [ onChange CreateNewLine ]
-                ([ "Réservation", "Enfûtage", "Inventaire" ]
-                    |> List.map (\opt -> option [ value opt ] [ opt |> text ])
-                )
+renderCreationButton : Html Msg
+renderCreationButton =
+    select [ class "select-new-line", onChange CreateNewLine ]
+        ([ ( "", "-- Ajouter une ligne --" )
+         , ( "reservation", "Réservation" )
+         , ( "brew", "Enfûtage" )
+         , ( "inventory", "Inventaire" )
+         ]
+            |> List.map (\( opt, description ) -> option [ value opt ] [ description |> text ])
+        )
 
 
 renderReservationTable : Model -> Html Msg
@@ -407,30 +461,50 @@ renderReservationTable model =
         ]
 
 
+renderNothing : Html msg
+renderNothing =
+    div [] []
+
+
 viewLine : Model -> ( Line, Dict String Int ) -> ( String, Html Msg )
 viewLine model ( line, totals ) =
     case line of
         BrewWrapper brew ->
-            ( brew.id |> String.fromInt, viewBrewLine model brew totals )
+            case brew.id of
+                Just uuid ->
+                    ( uuid |> Uuid.toString, viewBrewLine model brew totals uuid )
+
+                Nothing ->
+                    ( "", renderNothing )
 
         ReservationWrapper reservation ->
-            ( reservation.id |> String.fromInt, viewReservationLine model reservation totals )
+            case reservation.id of
+                Just uuid ->
+                    ( uuid |> Uuid.toString, viewReservationLine model reservation totals uuid )
+
+                Nothing ->
+                    ( "", renderNothing )
 
         InventoryWrapper inventory ->
-            ( inventory.id |> String.fromInt, viewInventoryLine model inventory totals )
+            case inventory.id of
+                Just uuid ->
+                    ( uuid |> Uuid.toString, viewInventoryLine model inventory totals uuid )
+
+                Nothing ->
+                    ( "", renderNothing )
 
 
-renderDateInput : Int -> Time.Posix -> (String -> Msg) -> Html Msg
-renderDateInput uid date event =
-    input [ type_ "date", id (uid |> String.fromInt), value (date |> formatDate), onInput event, required True ] []
+renderDateInput : Time.Posix -> (String -> Msg) -> Html Msg
+renderDateInput date event =
+    input [ type_ "date", value (date |> formatDate), onInput event, required True ] []
 
 
-viewInventoryLine : Model -> Inventory -> Dict String Int -> Html Msg
-viewInventoryLine model inventory totals =
+viewInventoryLine : Model -> Inventory -> Dict String Int -> Uuid.Uuid -> Html Msg
+viewInventoryLine model inventory totals uuid =
     tr
         [ class "inventaire" ]
         (List.concat
-            [ [ td [] [ renderDateInput inventory.id inventory.date (InventoryUpdateDate inventory.id) ]
+            [ [ td [] [ renderDateInput inventory.date (InventoryUpdateDate uuid) ]
               , td [] [ "Inventaire" |> text ]
               ]
             , model.beers
@@ -448,7 +522,7 @@ viewInventoryLine model inventory totals =
                             total =
                                 totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
                         in
-                        [ td [ class "move" ] [ input [ type_ "text", value displayableValue, onChange (InventoryUpdateQuantity inventory.id beer) ] [] ]
+                        [ td [ class "move" ] [ input [ type_ "text", value displayableValue, onChange (InventoryUpdateQuantity uuid beer) ] [] ]
                         , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
                         ]
                     )
@@ -458,13 +532,13 @@ viewInventoryLine model inventory totals =
         )
 
 
-viewBrewLine : Model -> Brew -> Dict String Int -> Html Msg
-viewBrewLine model brew totals =
+viewBrewLine : Model -> Brew -> Dict String Int -> Uuid.Uuid -> Html Msg
+viewBrewLine model brew totals uuid =
     tr [ class "mise-en-futs" ]
         (List.concat
-            [ [ td [] [ renderDateInput brew.id brew.date (BrewUpdateDate brew.id) ]
+            [ [ td [] [ renderDateInput brew.date (BrewUpdateDate uuid) ]
               , td []
-                    [ select [ onChange (BrewUpdateSelectedBeer brew.id) ]
+                    [ select [ onChange (BrewUpdateSelectedBeer uuid) ]
                         (model.beers
                             |> List.map
                                 (\beer ->
@@ -494,7 +568,7 @@ viewBrewLine model brew totals =
                         in
                         [ td [ class "move" ]
                             [ if beer == brew.beer then
-                                input [ type_ "text", value ("+" ++ String.fromInt quantity), onChange (BrewUpdateQuantity brew.id) ] []
+                                input [ type_ "text", value ("+" ++ String.fromInt quantity), onChange (BrewUpdateQuantity uuid) ] []
 
                               else
                                 "" |> text
@@ -508,12 +582,12 @@ viewBrewLine model brew totals =
         )
 
 
-viewReservationLine : Model -> Reservation -> Dict String Int -> Html Msg
-viewReservationLine model reservation totals =
+viewReservationLine : Model -> Reservation -> Dict String Int -> Uuid.Uuid -> Html Msg
+viewReservationLine model reservation totals uuid =
     tr []
         (List.concat
-            [ [ td [] [ renderDateInput reservation.id reservation.date (ReservationUpdateDate reservation.id) ]
-              , td [] [ input [ type_ "text", value reservation.name, onChange (ReservationUpdateName reservation.id) ] [] ]
+            [ [ td [] [ renderDateInput reservation.date (ReservationUpdateDate uuid) ]
+              , td [] [ input [ type_ "text", value reservation.name, onChange (ReservationUpdateName uuid) ] [] ]
               ]
             , model.beers
                 |> List.map
@@ -533,13 +607,13 @@ viewReservationLine model reservation totals =
                             total =
                                 totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
                         in
-                        [ td [ class "move" ] [ input [ type_ "text", value stringValue, onChange (ReservationUpdateQuantity reservation.id beer) ] [] ]
+                        [ td [ class "move" ] [ input [ type_ "text", value stringValue, onChange (ReservationUpdateQuantity uuid beer) ] [] ]
                         , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
                         ]
                     )
                 |> List.concat
             , [ td []
-                    [ input [ type_ "text", value reservation.notes, onChange (ReservationUpdateNotes reservation.id) ] [] ]
+                    [ input [ type_ "text", value reservation.notes, onChange (ReservationUpdateNotes uuid) ] [] ]
               , td []
                     [ text
                         (if reservation.tap then
@@ -559,13 +633,18 @@ viewReservationLine model reservation totals =
                                 _ ->
                                     reservation.cups |> String.fromInt
                       in
-                      input [ type_ "text", value cups, onChange (ReservationUpdateCups reservation.id) ] []
+                      input [ type_ "text", value cups, onChange (ReservationUpdateCups uuid) ] []
                     ]
               , td []
-                    [ input [ type_ "checkbox", checked reservation.done, onClick (ReservationUpdateDone reservation.id) ] [] ]
+                    [ input [ type_ "checkbox", checked reservation.done, onClick (ReservationUpdateDone uuid) ] [] ]
               ]
             ]
         )
+
+
+getTime =
+    Time.now
+        |> Task.perform OnTime
 
 
 
