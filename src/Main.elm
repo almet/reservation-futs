@@ -6,6 +6,7 @@ import Html exposing (..)
 import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra exposing (onChange)
+import Html.Keyed as Keyed
 import Html.Styled as Styled
 import List.Extra
 import Random exposing (Seed, initialSeed, step)
@@ -25,6 +26,7 @@ type alias Model =
     , inventories : List Inventory
     , currentSeed : Seed
     , currentUuid : Maybe Uuid.Uuid
+    , displayNewLineSelect : Bool
     }
 
 
@@ -99,6 +101,7 @@ init seed =
       , inventories = [ Inventory 3 (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
       , currentSeed = initialSeed seed
       , currentUuid = Nothing
+      , displayNewLineSelect = False
       }
     , Cmd.none
     )
@@ -110,8 +113,9 @@ init seed =
 
 type Msg
     = NoOp
-    | CreateNewLine
     | NewUuid
+    | DisplayNewLineSelect Bool
+    | CreateNewLine String
     | BrewUpdateDate Int String
     | BrewUpdateSelectedBeer Int String
     | ReservationUpdateDate Int String
@@ -141,7 +145,12 @@ update msg model =
             , Cmd.none
             )
 
-        CreateNewLine ->
+        DisplayNewLineSelect value ->
+            ( { model | displayNewLineSelect = value }, Cmd.none )
+
+        CreateNewLine lineType ->
+            --case lineType of
+            --    "Enfûtage" -> {model | brews = model.brews ++ [Brew ]}
             ( model, Cmd.none )
 
         BrewUpdateSelectedBeer id selectedBeer ->
@@ -361,7 +370,15 @@ view model =
 
 renderCreationButton : Model -> Html Msg
 renderCreationButton model =
-    a [ class "button ", onClick CreateNewLine ] [ "Ajouter une commande" |> text ]
+    case model.displayNewLineSelect of
+        False ->
+            a [ class "button ", onClick (DisplayNewLineSelect True) ] [ "Ajouter une commande" |> text ]
+
+        True ->
+            select [ onChange CreateNewLine ]
+                ([ "Réservation", "Enfûtage", "Inventaire" ]
+                    |> List.map (\opt -> option [ value opt ] [ opt |> text ])
+                )
 
 
 renderReservationTable : Model -> Html Msg
@@ -386,32 +403,32 @@ renderReservationTable model =
                     ]
                 )
             ]
-        , tbody []
-            (linesWithTotals |> List.map (viewLine model))
+        , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
         ]
 
 
-viewLine : Model -> ( Line, Dict String Int ) -> Html Msg
+viewLine : Model -> ( Line, Dict String Int ) -> ( String, Html Msg )
 viewLine model ( line, totals ) =
     case line of
         BrewWrapper brew ->
-            viewBrewLine model brew totals
+            ( brew.id |> String.fromInt, viewBrewLine model brew totals )
 
         ReservationWrapper reservation ->
-            viewReservationLine model reservation totals
+            ( reservation.id |> String.fromInt, viewReservationLine model reservation totals )
 
         InventoryWrapper inventory ->
-            viewInventoryLine model inventory totals
+            ( inventory.id |> String.fromInt, viewInventoryLine model inventory totals )
 
 
 renderDateInput : Int -> Time.Posix -> (String -> Msg) -> Html Msg
 renderDateInput uid date event =
-    input [ id (uid |> String.fromInt), type_ "date", value (date |> formatDate), onInput event, required True ] []
+    input [ type_ "date", id (uid |> String.fromInt), value (date |> formatDate), onInput event, required True ] []
 
 
 viewInventoryLine : Model -> Inventory -> Dict String Int -> Html Msg
 viewInventoryLine model inventory totals =
-    tr [ class "inventaire" ]
+    tr
+        [ class "inventaire" ]
         (List.concat
             [ [ td [] [ renderDateInput inventory.id inventory.date (InventoryUpdateDate inventory.id) ]
               , td [] [ "Inventaire" |> text ]
