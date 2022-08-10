@@ -3,7 +3,7 @@ import './milligram.css';
 import { Elm } from './Main.elm';
 import * as serviceWorker from './serviceWorker';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, get } from "firebase/database";
+import { getDatabase, ref, set, get, child } from "firebase/database";
 
 
 // Firebase integration.
@@ -23,7 +23,7 @@ const db = getDatabase(firebaseApp);
 const dbRef = ref(db);
 
 get(child(dbRef, `reservations`)).then((snapshot) => {
-  console.log(snapshot.val());
+  console.log(snapshot.val())
 });
 
 
