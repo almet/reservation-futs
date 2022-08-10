@@ -1,4 +1,4 @@
-module Main exposing (..)
+port module Main exposing (..)
 
 import Browser
 import Dict exposing (Dict)
@@ -7,6 +7,8 @@ import Html.Attributes exposing (..)
 import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra exposing (onChange)
 import Html.Keyed as Keyed
+import Json.Decode
+import Json.Encode
 import List.Extra
 import Random exposing (initialSeed)
 import Task
@@ -16,36 +18,20 @@ import Utils exposing (..)
 import Uuid
 
 
-init : Int -> ( Model, Cmd Msg )
-init seed =
+init : Flags -> ( Model, Cmd Msg )
+init flags =
     ( { reservations =
-            [ Reservation
-                (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B76")
-                (Time.millisToPosix 1659625547126)
-                "Alexis"
-                "0766554900"
-                (Dict.fromList
-                    [ ( "Souffle Tropical", 2 ), ( "Nouveau Monde", 4 ) ]
-                )
-                False
-                "Notes"
-                0
-                False
-            ]
-      , brews = [ Brew (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B77") (Time.millisToPosix 1659020747126) "Nouveau Monde" 75 ]
+            Json.Decode.decodeString reservationsDecoder flags.reservations |> Result.withDefault []
+      , brews = Json.Decode.decodeString brewsDecoder flags.brews |> Result.withDefault []
       , beers = [ "Souffle Tropical", "Nouveau Monde" ]
-      , inventories = [ Inventory (Uuid.fromString "63B9AAA2-6AAF-473E-B37E-22EB66E66B78") (Time.millisToPosix 1658415947126) (Dict.fromList [ ( "Souffle Tropical", 10 ), ( "Nouveau Monde", 10 ) ]) ]
-      , currentSeed = initialSeed seed
+      , inventories = Json.Decode.decodeString inventoriesDecoder flags.inventories |> Result.withDefault []
+      , currentSeed = initialSeed flags.seed
       , currentUuid = Nothing
       , displayNewLineSelect = False
       , now = Time.millisToPosix 0
       }
     , getTime
     )
-
-
-
----- UPDATE ----
 
 
 type Msg
@@ -141,39 +127,49 @@ update msg model =
                         _ ->
                             model_
             in
-            ( newModel, Cmd.none )
+            ( newModel, storeData (encodeLines newModel) )
 
         BrewUpdateSelectedBeer id selectedBeer ->
-            ( { model
-                | brews =
-                    model.brews
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | beer = selectedBeer })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | brews =
+                            model.brews
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | beer = selectedBeer })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         BrewUpdateQuantity id quantityStr ->
-            ( { model
-                | brews =
-                    model.brews
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | quantity = quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0 })
-              }
-            , Cmd.none
-            )
+            let
+                newModel =
+                    { model
+                        | brews =
+                            model.brews
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | quantity = quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0 })
+                    }
+            in
+            ( newModel, Cmd.none )
 
         BrewUpdateDate id date ->
-            ( { model
-                | brews =
-                    model.brews
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | date = date |> dateToPosix })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | brews =
+                            model.brews
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | date = date |> dateToPosix })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         InventoryUpdateQuantity id beer quantityStr ->
@@ -181,25 +177,33 @@ update msg model =
                 quantity =
                     quantityStr |> String.replace "=" "" |> String.toInt |> Maybe.withDefault 0
             in
-            ( { model
-                | inventories =
-                    model.inventories
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | inventories =
+                            model.inventories
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | stock = x.stock |> Dict.insert beer quantity })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         InventoryUpdateDate id date ->
-            ( { model
-                | inventories =
-                    model.inventories
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | date = date |> dateToPosix })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | inventories =
+                            model.inventories
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | date = date |> dateToPosix })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateQuantity id beer quantityStr ->
@@ -207,80 +211,108 @@ update msg model =
                 quantity =
                     quantityStr |> String.replace "-" "" |> String.toInt |> Maybe.withDefault 0
             in
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | order = x.order |> Dict.insert beer quantity })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | order = x.order |> Dict.insert beer quantity })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateName id name ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | name = name })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | name = name })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateNotes id notes ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | notes = notes })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | notes = notes })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateTap id tap ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | tap = tap })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | tap = tap })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateCups id cups ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | cups = cups |> String.toInt |> Maybe.withDefault 0 })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | cups = cups |> String.toInt |> Maybe.withDefault 0 })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateDone id ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | done = not x.done })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | done = not x.done })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         ReservationUpdateDate id date ->
-            ( { model
-                | reservations =
-                    model.reservations
-                        |> List.Extra.updateIf
-                            (\x -> x.id == Just id)
-                            (\x -> { x | date = date |> dateToPosix })
-              }
-            , Cmd.none
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.Extra.updateIf
+                                    (\x -> x.id == Just id)
+                                    (\x -> { x | date = date |> dateToPosix })
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
             )
 
         NoOp ->
@@ -382,18 +414,23 @@ renderReservationTable model =
         linesWithTotals =
             List.map2 Tuple.pair lines (computeTotals model.beers lines)
     in
-    table [ class "table" ]
-        [ thead []
-            [ tr []
-                (List.concat
-                    [ [ "Date", "Nom" ] |> List.map headerLine
-                    , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
-                    , [ "Notes", "Tireuse", "Gobelets", "Fait" ] |> List.map headerLine
+    case lines |> List.length of
+        0 ->
+            div [ class "" ] [ "C'est bien vide ! 🤔" |> text ]
+
+        _ ->
+            table [ class "table" ]
+                [ thead []
+                    [ tr []
+                        (List.concat
+                            [ [ "Date", "Nom" ] |> List.map headerLine
+                            , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
+                            , [ "Notes", "Tireuse", "Gobelets", "Fait" ] |> List.map headerLine
+                            ]
+                        )
                     ]
-                )
-            ]
-        , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
-        ]
+                , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
+                ]
 
 
 renderNothing : Html msg
@@ -583,10 +620,17 @@ getTime =
 
 
 
----- PROGRAM ----
+-- Ports
 
 
-main : Program Int Model Msg
+port storeData : Json.Encode.Value -> Cmd msg
+
+
+
+-- Program
+
+
+main : Program Flags Model Msg
 main =
     Browser.element
         { view = view

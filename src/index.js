@@ -2,13 +2,54 @@ import './main.css';
 import './milligram.css';
 import { Elm } from './Main.elm';
 import * as serviceWorker from './serviceWorker';
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, set, get } from "firebase/database";
 
-Elm.Main.init({
-  flags: Math.floor(Math.random() * 0x0FFFFFFF),
+
+// Firebase integration.
+const firebaseConfig = {
+  apiKey: "AIzaSyBnK2Ns0WYcecS5trjKQ56I3oX-kL1vqv4",
+  authDomain: "reservation-futs.firebaseapp.com",
+  databaseURL: "https://reservation-futs-default-rtdb.europe-west1.firebasedatabase.app",
+  projectId: "reservation-futs",
+  storageBucket: "reservation-futs.appspot.com",
+  messagingSenderId: "478325705421",
+  appId: "1:478325705421:web:54eef9ff9c3e752d113784"
+};
+
+
+const firebaseApp = initializeApp(firebaseConfig);
+const db = getDatabase(firebaseApp);
+const dbRef = ref(db);
+
+get(child(dbRef, `reservations`)).then((snapshot) => {
+  console.log(snapshot.val());
+});
+
+
+var app = Elm.Main.init({
+  flags: {
+    reservations: localStorage.getItem('reservations') || "",
+    brews: localStorage.getItem('brews') || "",
+    inventories: localStorage.getItem('inventories') || "",
+    seed: Math.floor(Math.random() * 0x0FFFFFFF),
+  },
   node: document.getElementById('root')
 });
 
-// If you want your app to work offline and load faster, you can change
-// unregister() to register() below. Note this comes with some pitfalls.
-// Learn more about service workers: https://bit.ly/CRA-PWA
-serviceWorker.unregister();
+
+serviceWorker.register();
+
+app.ports.storeData.subscribe(function (data) {
+  //localStorage.setItem('reservations', JSON.stringify(data.reservations));
+  //localStorage.setItem('brews', JSON.stringify(data.brews));
+  //localStorage.setItem('inventories', JSON.stringify(data.inventories));
+
+  const db = getDatabase();
+  set(ref(db, 'reservations'), data.reservations);
+  set(ref(db, 'brews'), data.brews);
+  set(ref(db, 'inventories'), data.inventories);
+});
+
+/** app.ports.messageReceiver.send(event.data); **/
+

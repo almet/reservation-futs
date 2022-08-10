@@ -72,6 +72,23 @@ type Line
     | InventoryWrapper Inventory
 
 
+type alias Flags =
+    { reservations : String
+    , inventories : String
+    , brews : String
+    , seed : Int
+    }
+
+
+encodeLines : Model -> Json.Encode.Value
+encodeLines model =
+    Json.Encode.object
+        [ ( "reservations", model.reservations |> encodeReservations )
+        , ( "inventories", model.inventories |> encodeInventories )
+        , ( "brews", model.brews |> encodeBrews )
+        ]
+
+
 encodeReservations : List Reservation -> Json.Encode.Value
 encodeReservations reservations =
     reservations
