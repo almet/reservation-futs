@@ -8,77 +8,12 @@ import Html.Events exposing (onClick, onInput)
 import Html.Events.Extra exposing (onChange)
 import Html.Keyed as Keyed
 import List.Extra
-import Random exposing (Seed, initialSeed)
+import Random exposing (initialSeed)
 import Task
 import Time
+import Types exposing (..)
 import Utils exposing (..)
 import Uuid
-
-
-
----- MODEL ----
-
-
-type alias Model =
-    { reservations : List Reservation
-    , brews : List Brew
-    , beers : List String
-    , inventories : List Inventory
-    , currentSeed : Seed
-    , currentUuid : Maybe Uuid.Uuid
-    , displayNewLineSelect : Bool
-    , now : Time.Posix
-    }
-
-
-type alias NewLine =
-    { date : Time.Posix
-    , lineType : Maybe LineType
-    }
-
-
-type LineType
-    = LineReservation
-    | LineInventory
-    | LineBrew
-
-
-type alias Order =
-    Dict String Int
-
-
-type alias Inventory =
-    { id : Maybe Uuid.Uuid
-    , date : Time.Posix
-    , stock : Dict String Int
-    }
-
-
-type alias Reservation =
-    { id : Maybe Uuid.Uuid
-    , date : Time.Posix
-    , name : String
-    , contact : String
-    , order : Order
-    , tap : Bool
-    , notes : String
-    , cups : Int
-    , done : Bool
-    }
-
-
-type alias Brew =
-    { id : Maybe Uuid.Uuid
-    , date : Time.Posix
-    , beer : String
-    , quantity : Int
-    }
-
-
-type Line
-    = BrewWrapper Brew
-    | ReservationWrapper Reservation
-    | InventoryWrapper Inventory
 
 
 init : Int -> ( Model, Cmd Msg )
