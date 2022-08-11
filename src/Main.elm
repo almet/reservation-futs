@@ -39,7 +39,6 @@ type Msg
     | NewUuid
     | OnTime Time.Posix
     | DisplayNewLineSelect Bool
-    | CreateNewLine String
     | BrewUpdateDate Uuid.Uuid String
     | BrewUpdateSelectedBeer Uuid.Uuid String
     | ReservationUpdateDate Uuid.Uuid String
@@ -52,6 +51,15 @@ type Msg
     | ReservationUpdateTap Uuid.Uuid Bool
     | ReservationUpdateCups Uuid.Uuid String
     | ReservationUpdateDone Uuid.Uuid
+    | CreateBrew
+    | CreateInventory
+    | CreateReservation
+    | ReplaceReservations String
+    | ReplaceInventories String
+    | ReplaceBrews String
+    | DeleteReservation Uuid.Uuid
+    | DeleteInventory Uuid.Uuid
+    | DeleteBrew Uuid.Uuid
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -75,57 +83,66 @@ update msg model =
         DisplayNewLineSelect value ->
             ( { model | displayNewLineSelect = value }, Cmd.none )
 
-        CreateNewLine lineType ->
+        CreateBrew ->
             let
                 ( model_, _ ) =
                     update NewUuid model
 
                 newModel =
-                    case lineType of
-                        "brew" ->
-                            { model_
-                                | brews =
-                                    model_.brews
-                                        ++ [ Brew
-                                                model_.currentUuid
-                                                model_.now
-                                                (model_.beers |> List.head |> Maybe.withDefault "")
-                                                75
-                                           ]
-                            }
+                    { model_
+                        | brews =
+                            model_.brews
+                                ++ [ Brew
+                                        model_.currentUuid
+                                        model_.now
+                                        (model_.beers |> List.head |> Maybe.withDefault "")
+                                        75
+                                   ]
+                    }
+            in
+            ( newModel, storeData (encodeLines newModel) )
 
-                        "inventory" ->
-                            { model_
-                                | inventories =
-                                    model_.inventories
-                                        ++ [ Inventory
-                                                model_.currentUuid
-                                                model_.now
-                                                (Dict.fromList
-                                                    (model_.beers |> List.map (\x -> ( x, 0 )))
-                                                )
-                                           ]
-                            }
+        CreateInventory ->
+            let
+                ( model_, _ ) =
+                    update NewUuid model
 
-                        "reservation" ->
-                            { model_
-                                | reservations =
-                                    model_.reservations
-                                        ++ [ Reservation
-                                                model_.currentUuid
-                                                model_.now
-                                                ""
-                                                ""
-                                                (Dict.fromList (model_.beers |> List.map (\x -> ( x, 0 ))))
-                                                True
-                                                ""
-                                                0
-                                                False
-                                           ]
-                            }
+                newModel =
+                    { model_
+                        | inventories =
+                            model_.inventories
+                                ++ [ Inventory
+                                        model_.currentUuid
+                                        model_.now
+                                        (Dict.fromList
+                                            (model_.beers |> List.map (\x -> ( x, 0 )))
+                                        )
+                                   ]
+                    }
+            in
+            ( newModel, storeData (encodeLines newModel) )
 
-                        _ ->
-                            model_
+        CreateReservation ->
+            let
+                ( model_, _ ) =
+                    update NewUuid model
+
+                newModel =
+                    { model_
+                        | reservations =
+                            model_.reservations
+                                ++ [ Reservation
+                                        model_.currentUuid
+                                        model_.now
+                                        ""
+                                        ""
+                                        (Dict.fromList (model_.beers |> List.map (\x -> ( x, 0 ))))
+                                        True
+                                        ""
+                                        0
+                                        False
+                                   ]
+                    }
             in
             ( newModel, storeData (encodeLines newModel) )
 
@@ -155,7 +172,7 @@ update msg model =
                                     (\x -> { x | quantity = quantityStr |> String.replace "+" "" |> String.toInt |> Maybe.withDefault 0 })
                     }
             in
-            ( newModel, Cmd.none )
+            ( newModel, storeData (encodeLines newModel) )
 
         BrewUpdateDate id date ->
             let
@@ -315,6 +332,69 @@ update msg model =
             , storeData (encodeLines newModel)
             )
 
+        DeleteReservation id ->
+            let
+                newModel =
+                    { model
+                        | reservations =
+                            model.reservations
+                                |> List.filter (\x -> x.id /= Just id)
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
+            )
+
+        DeleteInventory id ->
+            let
+                newModel =
+                    { model
+                        | inventories =
+                            model.inventories
+                                |> List.filter (\x -> x.id /= Just id)
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
+            )
+
+        DeleteBrew id ->
+            let
+                newModel =
+                    { model
+                        | brews =
+                            model.brews
+                                |> List.filter (\x -> x.id /= Just id)
+                    }
+            in
+            ( newModel
+            , storeData (encodeLines newModel)
+            )
+
+        ReplaceReservations encoded ->
+            let
+                newReservations =
+                    Json.Decode.decodeString reservationsDecoder encoded
+                        |> Result.withDefault model.reservations
+            in
+            ( { model | reservations = newReservations }, Cmd.none )
+
+        ReplaceInventories encoded ->
+            let
+                newInventories =
+                    Json.Decode.decodeString inventoriesDecoder encoded
+                        |> Result.withDefault model.inventories
+            in
+            ( { model | inventories = newInventories }, Cmd.none )
+
+        ReplaceBrews encoded ->
+            let
+                newBrews =
+                    Json.Decode.decodeString brewsDecoder encoded
+                        |> Result.withDefault model.brews
+            in
+            ( { model | brews = newBrews }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -384,29 +464,26 @@ computeTotals beers lines =
 view : Model -> Html Msg
 view model =
     div [ class "wrapper" ]
-        [ h1 [] [ "Suivi des réservations de fûts ⛽ " |> text ]
-        , renderCreationButton
+        [ h1 [] [ "⛽ " |> text ]
+        , renderCreationLinks model
         , renderReservationTable model
         ]
 
 
-renderCreationButton : Html Msg
-renderCreationButton =
-    select [ class "select-new-line", onChange CreateNewLine ]
-        ([ ( "", "-- Ajouter une ligne --" )
-         , ( "reservation", "Réservation" )
-         , ( "brew", "Enfûtage" )
-         , ( "inventory", "Inventaire" )
-         ]
-            |> List.map (\( opt, description ) -> option [ value opt ] [ description |> text ])
-        )
+renderCreationLinks : Model -> Html Msg
+renderCreationLinks model =
+    ul [ class "creation-links" ]
+        [ li [] [ a [ onClick CreateBrew ] [ "+ Enfûtage" |> text ] ]
+        , li [] [ a [ onClick CreateInventory ] [ "= Inventaire" |> text ] ]
+        , li [] [ a [ onClick CreateReservation ] [ "- Résa" |> text ] ]
+        ]
 
 
 renderReservationTable : Model -> Html Msg
 renderReservationTable model =
     let
         headerLine header =
-            th [] [ header |> text ]
+            th [ class (header |> String.toLower) ] [ header |> text ]
 
         lines =
             combineAndSort model.brews model.reservations model.inventories
@@ -419,13 +496,13 @@ renderReservationTable model =
             div [ class "" ] [ "C'est bien vide ! 🤔" |> text ]
 
         _ ->
-            table [ class "table" ]
+            table [ class "table table-wrapper" ]
                 [ thead []
                     [ tr []
                         (List.concat
                             [ [ "Date", "Nom" ] |> List.map headerLine
                             , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
-                            , [ "Notes", "Tireuse", "Gobelets", "Fait" ] |> List.map headerLine
+                            , [ "Notes", "Tireuse", "Gobelets", "" ] |> List.map headerLine
                             ]
                         )
                     ]
@@ -471,6 +548,18 @@ renderDateInput date event =
     input [ type_ "date", value (date |> formatDate), onInput event, required True ] []
 
 
+renderTotalCell total =
+    let
+        polarity =
+            if total >= 0 then
+                "positive"
+
+            else
+                "negative"
+    in
+    td [ class ("total " ++ polarity) ] [ "(" ++ String.fromInt total ++ ")" |> text ]
+
+
 viewInventoryLine : Model -> Inventory -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewInventoryLine model inventory totals uuid =
     tr
@@ -492,14 +581,17 @@ viewInventoryLine model inventory totals uuid =
                                         "=" ++ String.fromInt v
 
                             total =
-                                totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
+                                totals |> Dict.get beer |> Maybe.withDefault 0
                         in
                         [ td [ class "move" ] [ input [ type_ "text", value displayableValue, onChange (InventoryUpdateQuantity uuid beer) ] [] ]
-                        , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
+                        , renderTotalCell total
                         ]
                     )
                 |> List.concat
-            , [ td [ colspan 6 ] [] ]
+            , [ td [ colspan 3 ] []
+              , td []
+                    [ renderDeleteLink (DeleteInventory uuid) ]
+              ]
             ]
         )
 
@@ -545,11 +637,14 @@ viewBrewLine model brew totals uuid =
                               else
                                 "" |> text
                             ]
-                        , td [ class "total" ] [ ("(" ++ (totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt) ++ ")") |> text ]
+                        , renderTotalCell (totals |> Dict.get beer |> Maybe.withDefault 0)
                         ]
                     )
                 |> List.concat
-            , [ td [ colspan 6 ] [] ]
+            , [ td [ colspan 3 ] []
+              , td []
+                    [ renderDeleteLink (DeleteBrew uuid) ]
+              ]
             ]
         )
 
@@ -577,15 +672,15 @@ viewReservationLine model reservation totals uuid =
                                         String.fromInt v |> (++) "-"
 
                             total =
-                                totals |> Dict.get beer |> Maybe.withDefault 0 |> String.fromInt
+                                totals |> Dict.get beer |> Maybe.withDefault 0
                         in
                         [ td [ class "move" ] [ input [ type_ "text", value stringValue, onChange (ReservationUpdateQuantity uuid beer) ] [] ]
-                        , td [ class "total" ] [ "(" ++ total ++ ")" |> text ]
+                        , renderTotalCell total
                         ]
                     )
                 |> List.concat
             , [ td []
-                    [ input [ type_ "text", value reservation.notes, onChange (ReservationUpdateNotes uuid) ] [] ]
+                    [ textarea [ onChange (ReservationUpdateNotes uuid) ] [ reservation.notes |> text ] ]
               , td []
                     [ text
                         (if reservation.tap then
@@ -608,10 +703,14 @@ viewReservationLine model reservation totals uuid =
                       input [ type_ "text", value cups, onChange (ReservationUpdateCups uuid) ] []
                     ]
               , td []
-                    [ input [ type_ "checkbox", checked reservation.done, onClick (ReservationUpdateDone uuid) ] [] ]
+                    [ renderDeleteLink (DeleteReservation uuid) ]
               ]
             ]
         )
+
+
+renderDeleteLink event =
+    a [ class "delete", onClick event ] [ text "✘" ]
 
 
 getTime =
@@ -620,10 +719,32 @@ getTime =
 
 
 
+-- Subscriptions
+
+
+subscriptions : Model -> Sub Msg
+subscriptions model =
+    Sub.batch
+        [ replaceReservations ReplaceReservations
+        , replaceInventories ReplaceInventories
+        , replaceBrews ReplaceBrews
+        ]
+
+
+
 -- Ports
 
 
 port storeData : Json.Encode.Value -> Cmd msg
+
+
+port replaceReservations : (String -> msg) -> Sub msg
+
+
+port replaceInventories : (String -> msg) -> Sub msg
+
+
+port replaceBrews : (String -> msg) -> Sub msg
 
 
 
@@ -636,5 +757,5 @@ main =
         { view = view
         , init = init
         , update = update
-        , subscriptions = always Sub.none
+        , subscriptions = subscriptions
         }

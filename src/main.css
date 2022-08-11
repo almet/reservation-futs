@@ -32,28 +32,16 @@ img {
 }
 
 .mise-en-futs {
-  background-color: lightgreen;
+  background-color: #f7ff88;
 }
 
 .inventaire {
-  background-color: aquamarine;
+  background-color: #a7fbf4;
 }
 
 .row {
   height: 3em;
   margin-bottom: 1em;
-}
-
-.EDRPPresets {
-  display: none !important;
-}
-
-.EDRP__input {
-  height: 52px !important;
-  border: 2px solid #898BA9 !important;
-  border-radius: 7px !important;
-  font-weight: 400 !important;
-  font-size: inherit !important;
 }
 
 .container {
@@ -80,4 +68,82 @@ td>input {
 
 .select-new-line {
   width: inherit;
+  margin-bottom: 2em;
+}
+
+.delete {
+  cursor: pointer;
+  color: red;
+  margin-right: 1em;
+}
+
+
+table {
+  position: relative;
+  border-collapse: collapse;
+}
+
+td,
+th {
+  padding: 0.25em;
+}
+
+thead th {
+  position: -webkit-sticky;
+  position: sticky;
+  top: 2em;
+  background: #FFF;
+}
+
+thead th:first-child {
+  left: 0;
+  z-index: 1;
+}
+
+tbody th {
+  position: -webkit-sticky;
+  position: sticky;
+  left: 0;
+}
+
+.creation-links {
+  background-color: #FFF;
+  position: sticky;
+  top: 0px;
+  z-index: 1;
+  list-style-type: none;
+  margin-bottom: 0px;
+  padding-top: 1em;
+  padding-right: 1em;
+  height: 2em;
+  width: 100%;
+}
+
+.creation-links>li {
+  float: right;
+  margin-right: 1em;
+  cursor: pointer;
+  margin-bottom: 0px;
+}
+
+.creation-links>li>a {
+  color: black;
+  font-weight: bold;
+}
+
+.creation-links>li>a:hover {
+  text-decoration: underline;
+}
+
+.negative {
+  color: red;
+}
+
+.negative::after {
+  color: red;
+  content: "⚠";
+}
+
+th.nom {
+  min-width: 20%;
 }

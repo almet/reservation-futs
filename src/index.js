@@ -3,7 +3,7 @@ import './milligram.css';
 import { Elm } from './Main.elm';
 import * as serviceWorker from './serviceWorker';
 import { initializeApp } from 'firebase/app';
-import { getDatabase, ref, set, get, child } from "firebase/database";
+import { getDatabase, ref, set, get, child, onValue } from "firebase/database";
 
 
 // Firebase integration.
@@ -22,8 +22,16 @@ const firebaseApp = initializeApp(firebaseConfig);
 const db = getDatabase(firebaseApp);
 const dbRef = ref(db);
 
-get(child(dbRef, `reservations`)).then((snapshot) => {
-  console.log(snapshot.val())
+onValue(ref(db, 'reservations'), (snapshot) => {
+  app.ports.replaceReservations.send(JSON.stringify(snapshot.val()));
+});
+
+onValue(ref(db, 'brews'), (snapshot) => {
+  app.ports.replaceBrews.send(JSON.stringify(snapshot.val()));
+});
+
+onValue(ref(db, 'inventories'), (snapshot) => {
+  app.ports.replaceInventories.send(JSON.stringify(snapshot.val()));
 });
 
 
@@ -41,10 +49,6 @@ var app = Elm.Main.init({
 serviceWorker.register();
 
 app.ports.storeData.subscribe(function (data) {
-  //localStorage.setItem('reservations', JSON.stringify(data.reservations));
-  //localStorage.setItem('brews', JSON.stringify(data.brews));
-  //localStorage.setItem('inventories', JSON.stringify(data.inventories));
-
   const db = getDatabase();
   set(ref(db, 'reservations'), data.reservations);
   set(ref(db, 'brews'), data.brews);
