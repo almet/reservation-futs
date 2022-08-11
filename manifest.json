@@ -1,6 +1,6 @@
 {
-  "short_name": "Elm App",
-  "name": "Create Elm App Sample",
+  "short_name": "Réservations de fûts",
+  "name": "Réservation de fûts",
   "icons": [
     {
       "src": "favicon.ico",
