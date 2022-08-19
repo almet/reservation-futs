@@ -1,6 +1,7 @@
 port module Main exposing (..)
 
 import Browser
+import Browser.Dom as Dom
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
@@ -11,6 +12,7 @@ import Json.Decode
 import Json.Encode
 import List.Extra
 import Random exposing (initialSeed)
+import ScrollTo
 import Task
 import Time
 import Types exposing (..)
@@ -29,6 +31,8 @@ init flags =
       , currentUuid = Nothing
       , displayNewLineSelect = False
       , now = Time.millisToPosix 0
+      , scrollTo = ScrollTo.init
+      , pastWeeksToDisplay = 2
       }
     , getTime
     )
@@ -37,6 +41,7 @@ init flags =
 type Msg
     = NoOp
     | NewUuid
+    | ScrollToMsg ScrollTo.Msg
     | OnTime Time.Posix
     | DisplayNewLineSelect Bool
     | BrewUpdateDate Uuid.Uuid String
@@ -51,20 +56,32 @@ type Msg
     | ReservationUpdateTap Uuid.Uuid Bool
     | ReservationUpdateCups Uuid.Uuid String
     | ReservationUpdateDone Uuid.Uuid
-    | CreateBrew
-    | CreateInventory
-    | CreateReservation
+    | CreateBrew Time.Posix
+    | CreateInventory Time.Posix
+    | CreateReservation Time.Posix
     | ReplaceReservations String
     | ReplaceInventories String
     | ReplaceBrews String
     | DeleteReservation Uuid.Uuid
     | DeleteInventory Uuid.Uuid
     | DeleteBrew Uuid.Uuid
+    | IncreaseDisplayedPastWeeks
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
+        ScrollToMsg scrollToMsg ->
+            let
+                ( scrollToModel, scrollToCmds ) =
+                    ScrollTo.update
+                        scrollToMsg
+                        model.scrollTo
+            in
+            ( { model | scrollTo = scrollToModel }
+            , Cmd.map ScrollToMsg scrollToCmds
+            )
+
         OnTime time ->
             ( { model | now = time }, Cmd.none )
 
@@ -83,7 +100,7 @@ update msg model =
         DisplayNewLineSelect value ->
             ( { model | displayNewLineSelect = value }, Cmd.none )
 
-        CreateBrew ->
+        CreateBrew posix ->
             let
                 ( model_, _ ) =
                     update NewUuid model
@@ -94,7 +111,7 @@ update msg model =
                             model_.brews
                                 ++ [ Brew
                                         model_.currentUuid
-                                        model_.now
+                                        (posix |> Time.posixToMillis |> (+) 1 |> Time.millisToPosix)
                                         (model_.beers |> List.head |> Maybe.withDefault "")
                                         75
                                    ]
@@ -102,7 +119,7 @@ update msg model =
             in
             ( newModel, storeData (encodeLines newModel) )
 
-        CreateInventory ->
+        CreateInventory posix ->
             let
                 ( model_, _ ) =
                     update NewUuid model
@@ -113,7 +130,7 @@ update msg model =
                             model_.inventories
                                 ++ [ Inventory
                                         model_.currentUuid
-                                        model_.now
+                                        (posix |> Time.posixToMillis |> (+) 1 |> Time.millisToPosix)
                                         (Dict.fromList
                                             (model_.beers |> List.map (\x -> ( x, 0 )))
                                         )
@@ -122,7 +139,7 @@ update msg model =
             in
             ( newModel, storeData (encodeLines newModel) )
 
-        CreateReservation ->
+        CreateReservation posix ->
             let
                 ( model_, _ ) =
                     update NewUuid model
@@ -133,7 +150,7 @@ update msg model =
                             model_.reservations
                                 ++ [ Reservation
                                         model_.currentUuid
-                                        model_.now
+                                        (posix |> Time.posixToMillis |> (+) 1 |> Time.millisToPosix)
                                         ""
                                         ""
                                         (Dict.fromList (model_.beers |> List.map (\x -> ( x, 0 ))))
@@ -144,7 +161,24 @@ update msg model =
                                    ]
                     }
             in
-            ( newModel, storeData (encodeLines newModel) )
+            ( newModel
+            , Cmd.batch
+                [ storeData (encodeLines newModel)
+                , focusId model_.currentUuid
+                , case model_.currentUuid of
+                    Just id ->
+                        let
+                            f { viewport } { element } =
+                                { from = { x = viewport.x, y = viewport.y }
+                                , to = { x = viewport.x, y = element.y - 100000 }
+                                }
+                        in
+                        Cmd.map ScrollToMsg <| ScrollTo.scrollToCustom f (id |> Uuid.toString)
+
+                    Nothing ->
+                        Cmd.none
+                ]
+            )
 
         BrewUpdateSelectedBeer id selectedBeer ->
             let
@@ -395,6 +429,9 @@ update msg model =
             in
             ( { model | brews = newBrews }, Cmd.none )
 
+        IncreaseDisplayedPastWeeks ->
+            ( { model | pastWeeksToDisplay = model.pastWeeksToDisplay + 1 }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -465,17 +502,7 @@ view : Model -> Html Msg
 view model =
     div [ class "wrapper" ]
         [ h1 [] [ "⛽ " |> text ]
-        , renderCreationLinks model
         , renderReservationTable model
-        ]
-
-
-renderCreationLinks : Model -> Html Msg
-renderCreationLinks model =
-    ul [ class "creation-links" ]
-        [ li [] [ a [ onClick CreateBrew ] [ "+ Enfûtage" |> text ] ]
-        , li [] [ a [ onClick CreateInventory ] [ "= Inventaire" |> text ] ]
-        , li [] [ a [ onClick CreateReservation ] [ "- Résa" |> text ] ]
         ]
 
 
@@ -490,24 +517,53 @@ renderReservationTable model =
 
         linesWithTotals =
             List.map2 Tuple.pair lines (computeTotals model.beers lines)
+                |> List.filter
+                    (\( x, _ ) ->
+                        let
+                            n_weeks_ago =
+                                (model.now |> Time.posixToMillis) - (604800000 * model.pastWeeksToDisplay)
+
+                            compare item =
+                                (item.date |> Time.posixToMillis) > n_weeks_ago
+                        in
+                        case x of
+                            BrewWrapper e ->
+                                compare e
+
+                            InventoryWrapper e ->
+                                compare e
+
+                            ReservationWrapper e ->
+                                compare e
+                    )
     in
     case lines |> List.length of
         0 ->
-            div [ class "" ] [ "C'est bien vide ! 🤔" |> text ]
+            div [ class "empty" ] [ a [ onClick (CreateInventory model.now) ] [ "Aucune donnée. Peut-être voulez vous faire un état des stocks" |> text ] ]
 
         _ ->
             table [ class "table table-wrapper" ]
                 [ thead []
                     [ tr []
                         (List.concat
-                            [ [ "Date", "Nom" ] |> List.map headerLine
+                            [ [ "", "Date", "Nom" ] |> List.map headerLine
                             , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
-                            , [ "Notes", "Tireuse", "Gobelets", "" ] |> List.map headerLine
+                            , [ "Notes", "Gobelets" ] |> List.map headerLine
+                            , [ renderLinesToDisplay model ]
                             ]
                         )
                     ]
                 , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
                 ]
+
+
+renderLinesToDisplay : Model -> Html Msg
+renderLinesToDisplay model =
+    let
+        number =
+            model.pastWeeksToDisplay |> String.fromInt
+    in
+    th [ class "more" ] [ a [ onClick IncreaseDisplayedPastWeeks ] [ "Voir plus (" ++ number ++ ")" |> text ] ]
 
 
 renderNothing : Html msg
@@ -543,9 +599,16 @@ viewLine model ( line, totals ) =
                     ( "", renderNothing )
 
 
-renderDateInput : Time.Posix -> (String -> Msg) -> Html Msg
-renderDateInput date event =
-    input [ type_ "date", value (date |> formatDate), onInput event, required True ] []
+renderDateInput : Time.Posix -> (String -> Msg) -> Uuid.Uuid -> Html Msg
+renderDateInput date event uuid =
+    input
+        [ id ((uuid |> Uuid.toString) ++ "-date")
+        , type_ "date"
+        , value (date |> formatDate)
+        , onInput event
+        , required True
+        ]
+        []
 
 
 renderTotalCell total =
@@ -560,12 +623,23 @@ renderTotalCell total =
     td [ class ("total " ++ polarity) ] [ "(" ++ String.fromInt total ++ ")" |> text ]
 
 
+renderActions posix =
+    td [ class "actions" ]
+        [ ul [ class "creation-links" ]
+            [ li [] [ a [ onClick (CreateBrew posix) ] [ "+ enfûtage" |> text ] ]
+            , li [] [ a [ onClick (CreateInventory posix) ] [ "= inventaire" |> text ] ]
+            , li [] [ a [ onClick (CreateReservation posix) ] [ "- résa" |> text ] ]
+            ]
+        ]
+
+
 viewInventoryLine : Model -> Inventory -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewInventoryLine model inventory totals uuid =
     tr
         [ class "inventaire" ]
         (List.concat
-            [ [ td [] [ renderDateInput inventory.date (InventoryUpdateDate uuid) ]
+            [ [ renderActions inventory.date
+              , td [] [ renderDateInput inventory.date (InventoryUpdateDate uuid) uuid ]
               , td [] [ "Inventaire" |> text ]
               ]
             , model.beers
@@ -588,7 +662,7 @@ viewInventoryLine model inventory totals uuid =
                         ]
                     )
                 |> List.concat
-            , [ td [ colspan 3 ] []
+            , [ td [ colspan 2 ] []
               , td []
                     [ renderDeleteLink (DeleteInventory uuid) ]
               ]
@@ -600,7 +674,8 @@ viewBrewLine : Model -> Brew -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewBrewLine model brew totals uuid =
     tr [ class "mise-en-futs" ]
         (List.concat
-            [ [ td [] [ renderDateInput brew.date (BrewUpdateDate uuid) ]
+            [ [ renderActions brew.date
+              , td [] [ renderDateInput brew.date (BrewUpdateDate uuid) uuid ]
               , td []
                     [ select [ onChange (BrewUpdateSelectedBeer uuid) ]
                         (model.beers
@@ -641,7 +716,7 @@ viewBrewLine model brew totals uuid =
                         ]
                     )
                 |> List.concat
-            , [ td [ colspan 3 ] []
+            , [ td [ colspan 2 ] []
               , td []
                     [ renderDeleteLink (DeleteBrew uuid) ]
               ]
@@ -651,10 +726,22 @@ viewBrewLine model brew totals uuid =
 
 viewReservationLine : Model -> Reservation -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewReservationLine model reservation totals uuid =
-    tr []
+    let
+        isEmpty =
+            (reservation.order |> Dict.values |> List.sum) == 0
+
+        class_ =
+            if isEmpty then
+                "empty"
+
+            else
+                ""
+    in
+    tr [ id (uuid |> Uuid.toString), class class_ ]
         (List.concat
-            [ [ td [] [ renderDateInput reservation.date (ReservationUpdateDate uuid) ]
-              , td [] [ input [ type_ "text", value reservation.name, onChange (ReservationUpdateName uuid) ] [] ]
+            [ [ renderActions reservation.date
+              , td [] [ renderDateInput reservation.date (ReservationUpdateDate uuid) uuid ]
+              , td [] [ input [ id ((uuid |> Uuid.toString) ++ "-name"), type_ "text", value reservation.name, onChange (ReservationUpdateName uuid) ] [] ]
               ]
             , model.beers
                 |> List.map
@@ -682,15 +769,6 @@ viewReservationLine model reservation totals uuid =
             , [ td []
                     [ textarea [ onChange (ReservationUpdateNotes uuid) ] [ reservation.notes |> text ] ]
               , td []
-                    [ text
-                        (if reservation.tap then
-                            "Oui"
-
-                         else
-                            "Non"
-                        )
-                    ]
-              , td []
                     [ let
                         cups =
                             case reservation.cups of
@@ -716,6 +794,24 @@ renderDeleteLink event =
 getTime =
     Time.now
         |> Task.perform OnTime
+
+
+focusId : Maybe Uuid.Uuid -> Cmd Msg
+focusId uuid =
+    case uuid of
+        Nothing ->
+            Cmd.none
+
+        Just id ->
+            Task.attempt
+                (\a ->
+                    let
+                        _ =
+                            Debug.log "Value of a: " a
+                    in
+                    NoOp
+                )
+                (Dom.focus ((id |> Uuid.toString) ++ "-name"))
 
 
 

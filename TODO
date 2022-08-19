@@ -1,0 +1,5 @@
+- Gérer une authentification (base de donnée séparée par login/mdp)
+- Faire des sauvegardes de données tous les jours (en local ? en ligne ?)
+- Demander les bières à gérer au démarrage.
+- Gérer la réservation de tireuses
+- Gérer le numéro de téléphone dans un autre champ

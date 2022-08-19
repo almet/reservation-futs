@@ -62,6 +62,10 @@ img {
   width: 1em;
 }
 
+textarea {
+  border: none !important;
+}
+
 td>input {
   border: none !important;
 }
@@ -91,7 +95,7 @@ th {
 thead th {
   position: -webkit-sticky;
   position: sticky;
-  top: 2em;
+  top: 0em;
   background: #FFF;
 }
 
@@ -107,16 +111,10 @@ tbody th {
 }
 
 .creation-links {
-  background-color: #FFF;
-  position: sticky;
-  top: 0px;
-  z-index: 1;
   list-style-type: none;
   margin-bottom: 0px;
-  padding-top: 1em;
-  padding-right: 1em;
-  height: 2em;
-  width: 100%;
+  font-size: 0.8em;
+
 }
 
 .creation-links>li {
@@ -127,8 +125,7 @@ tbody th {
 }
 
 .creation-links>li>a {
-  color: black;
-  font-weight: bold;
+  color: #606c76;
 }
 
 .creation-links>li>a:hover {
@@ -146,4 +143,25 @@ tbody th {
 
 th.nom {
   min-width: 20%;
+}
+
+th.more {
+  min-width: 7em;
+}
+
+tr.empty {
+  position: relative;
+  border-left: 5px black solid !important;
+}
+
+a {
+  cursor: pointer;
+}
+
+.actions {
+  opacity: 0;
+}
+
+tr:hover .actions {
+  opacity: 1;
 }

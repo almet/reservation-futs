@@ -6,6 +6,7 @@ import Json.Decode.Pipeline exposing (optional, required)
 import Json.Encode
 import Json.Encode.Extra
 import Random exposing (Seed)
+import ScrollTo
 import Time
 import Uuid
 
@@ -19,6 +20,8 @@ type alias Model =
     , currentUuid : Maybe Uuid.Uuid
     , displayNewLineSelect : Bool
     , now : Time.Posix
+    , scrollTo : ScrollTo.State
+    , pastWeeksToDisplay : Int
     }
 
 
