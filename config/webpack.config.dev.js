@@ -8,6 +8,7 @@ const CaseSensitivePathsPlugin = require('case-sensitive-paths-webpack-plugin');
 const InterpolateHtmlPlugin = require('react-dev-utils/InterpolateHtmlPlugin');
 const getClientEnvironment = require('./env');
 const paths = require('../config/paths');
+const tailwindcss = require('tailwindcss');
 
 // Webpack uses `publicPath` to determine where the app is being served from.
 // In development, we always serve from the root. This makes config easier.
@@ -206,18 +207,26 @@ module.exports = {
             // Options for PostCSS as we reference these options twice
             // Adds vendor prefixing based on your specified browser support in
             // package.json
-            loader: require.resolve('postcss-loader'),
+            loader: 'postcss-loader',
             options: {
               // Necessary for external CSS imports to work
               // https://github.com/facebook/create-react-app/issues/2677
               postcssOptions: {
-                plugins: () => [
-                  require('tailwindcss'),
-                  require('postcss-flexbugs-fixes'),
-                  autoprefixer({
-                    flexbox: 'no-2009',
-                  }),
-                ],
+                plugins:
+                  [
+                    ["tailwindcss", {
+                      content: ["./src/*.{js,html,css,elm}"],
+                      theme: {
+                        extend: {},
+                      },
+                      plugins: [],
+                    }],
+                    "postcss-flexbugs-fixes",
+                    ["autoprefixer", {
+                      flexbox: 'no-2009',
+                    }],
+                  ]
+                ,
               },
             },
           },
