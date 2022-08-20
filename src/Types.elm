@@ -23,6 +23,8 @@ type alias Model =
     , scrollTo : ScrollTo.State
     , pastWeeksToDisplay : Int
     , userEmail : String
+    , loginFormEmail : String
+    , userMenuOpen : Bool
     }
 
 
@@ -81,6 +83,7 @@ type alias Flags =
     , inventories : String
     , brews : String
     , seed : Int
+    , userEmail : String
     }
 
 

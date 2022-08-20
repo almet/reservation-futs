@@ -220,6 +220,16 @@ module.exports = {
                         extend: {},
                       },
                       plugins: [],
+                      safelist: [
+                        'bg-green-200',
+                        'bg-orange-200',
+                        'bg-yellow-200',
+                        'bg-grey-200',
+                        'text-green-900',
+                        'text-orange-900',
+                        'text-yellow-900',
+                        'text-grey-900',
+                      ],
                     }],
                     "postcss-flexbugs-fixes",
                     ["autoprefixer", {

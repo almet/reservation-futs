@@ -14,14 +14,6 @@
   height: inherit;
 }
 
-body {
-  font-family: 'Source Sans Pro', 'Trebuchet MS', 'Lucida Grande', 'Bitstream Vera Sans', 'Helvetica Neue', sans-serif;
-  margin: 0;
-  text-align: center;
-  color: #293c4b;
-  padding: 1em;
-}
-
 .wrapper {
   max-width: 150rem;
   margin: auto;
@@ -29,19 +21,6 @@ body {
 
 h1 {
   font-size: 30px;
-}
-
-img {
-  margin: 20px 0;
-  max-width: 200px;
-}
-
-.mise-en-futs {
-  background-color: #f7ff88;
-}
-
-.inventaire {
-  background-color: #a7fbf4;
 }
 
 .row {
@@ -53,14 +32,6 @@ img {
   margin: 0 0 !important;
 }
 
-.move {
-  text-align: right;
-}
-
-.move>input {
-  text-align: right;
-  border: none !important;
-}
 
 .total {
   text-align: left;
@@ -169,4 +140,9 @@ a {
 
 tr:hover .actions {
   opacity: 1;
+}
+
+textarea:focus,
+input:focus {
+  outline: none;
 }

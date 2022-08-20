@@ -1,5 +1,4 @@
 import './main.css';
-import './milligram.css';
 import { Elm } from './Main.elm';
 import * as serviceWorker from './serviceWorker';
 import { createClient } from '@supabase/supabase-js'
@@ -19,6 +18,14 @@ const sendToPortOnChanges = function (name, port) {
   }).subscribe()
 }
 
+const getUserEmail = function () {
+  let user = supabase.auth.user();
+  if (user) {
+    return user.email;
+  }
+  return "";
+}
+
 // Create a single supabase client for interacting with your database
 const supabase = createClient(
   'https://wujxdtojfygcivunjwju.supabase.co',
@@ -32,23 +39,36 @@ var app = Elm.Main.init({
     brews: "",
     inventories: "",
     seed: Math.floor(Math.random() * 0x0FFFFFFF),
-    // userId: 
+    userEmail: getUserEmail()
   },
   node: document.getElementById('root')
 });
 
-app.ports.storeData.subscribe(function (data) {
-  supabase.from('storage').update({ data: JSON.stringify(data.reservations) }).match({ id: 'reservations' }).then(console.log)
+app.ports.storeData.subscribe(async function (data) {
+  await supabase.from('storage').update({ data: JSON.stringify(data.reservations) }).match({ id: 'reservations' });
+  await supabase.from('storage').update({ data: JSON.stringify(data.inventories) }).match({ id: 'inventories' });
+  await supabase.from('storage').update({ data: JSON.stringify(data.brews) }).match({ id: 'brews' });
 });
 
-/* app.ports.fetchData.subscribe(async function () {
+app.ports.startLogin.subscribe(async function (email) {
+  console.log(email);
+  await supabase.auth.signIn({ email: email });
+  supabase.auth.onAuthStateChange((event, session) => {
+    if (event == 'SIGNED_IN') {
+      app.ports.loginSuccess.send(session.user.email);
+    }
+  })
+
+});
+
+app.ports.fetchData.subscribe(async function () {
   let data = await getData();
   const val = (v) => { return v.data.data; }
   console.log(data);
-  app.ports.replaceReservations(val(data.reservations));
-  app.ports.replaceBrews(val(data.brews));
-  app.ports.replaceInventories(val(data.inventories));
-}); */
+  app.ports.replaceReservations.send(val(data.reservations));
+  app.ports.replaceBrews.send(val(data.brews));
+  app.ports.replaceInventories.send(val(data.inventories));
+});
 
 sendToPortOnChanges("reservations", app.ports.replaceReservations);
 sendToPortOnChanges("brews", app.ports.replaceBrews);
@@ -57,6 +77,6 @@ sendToPortOnChanges("inventories", app.ports.replaceInventories);
 
 
 /* const user = supabase.auth.user();
-await supabase.auth.signIn({ email: 'contact@vieuxsinge.com' })
+
 */
 serviceWorker.register();

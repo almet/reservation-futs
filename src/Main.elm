@@ -2,15 +2,17 @@ port module Main exposing (..)
 
 import Browser
 import Browser.Dom as Dom
+import Css.Global exposing (svg)
 import Dict exposing (Dict)
 import Html exposing (..)
 import Html.Attributes exposing (..)
-import Html.Events exposing (onClick, onInput)
+import Html.Events exposing (onClick, onInput, onSubmit)
 import Html.Events.Extra exposing (onChange)
 import Html.Keyed as Keyed
 import Json.Decode
 import Json.Encode
 import List.Extra
+import Murmur3
 import Random exposing (initialSeed)
 import ScrollTo
 import Task
@@ -33,12 +35,13 @@ init flags =
       , now = Time.millisToPosix 0
       , scrollTo = ScrollTo.init
       , pastWeeksToDisplay = 2
-      , userEmail = ""
+      , userEmail = flags.userEmail
+      , loginFormEmail = ""
+      , userMenuOpen = False
       }
     , Cmd.batch
         [ getTime
-
-        --, fetchData "yeah"
+        , fetchData "yeah"
         ]
     )
 
@@ -46,8 +49,11 @@ init flags =
 type Msg
     = NoOp
     | NewUuid
-    | ScrollToMsg ScrollTo.Msg
     | OnTime Time.Posix
+    | UpdateLoginFormEmail String
+    | SubmitLoginForm
+    | LoginSuccess String
+    | ToggleUserMenu
     | DisplayNewLineSelect Bool
     | BrewUpdateDate Uuid.Uuid String
     | BrewUpdateSelectedBeer Uuid.Uuid String
@@ -76,17 +82,6 @@ type Msg
 update : Msg -> Model -> ( Model, Cmd Msg )
 update msg model =
     case msg of
-        ScrollToMsg scrollToMsg ->
-            let
-                ( scrollToModel, scrollToCmds ) =
-                    ScrollTo.update
-                        scrollToMsg
-                        model.scrollTo
-            in
-            ( { model | scrollTo = scrollToModel }
-            , Cmd.map ScrollToMsg scrollToCmds
-            )
-
         OnTime time ->
             ( { model | now = time }, Cmd.none )
 
@@ -170,18 +165,6 @@ update msg model =
             , Cmd.batch
                 [ storeData (encodeLines newModel)
                 , focusId model_.currentUuid
-                , case model_.currentUuid of
-                    Just id ->
-                        let
-                            f { viewport } { element } =
-                                { from = { x = viewport.x, y = viewport.y }
-                                , to = { x = viewport.x, y = element.y - 100000 }
-                                }
-                        in
-                        Cmd.map ScrollToMsg <| ScrollTo.scrollToCustom f (id |> Uuid.toString)
-
-                    Nothing ->
-                        Cmd.none
                 ]
             )
 
@@ -437,6 +420,18 @@ update msg model =
         IncreaseDisplayedPastWeeks ->
             ( { model | pastWeeksToDisplay = model.pastWeeksToDisplay + 1 }, Cmd.none )
 
+        UpdateLoginFormEmail email ->
+            ( { model | loginFormEmail = email }, Cmd.none )
+
+        SubmitLoginForm ->
+            ( model, startLogin model.loginFormEmail )
+
+        LoginSuccess email ->
+            ( { model | userEmail = email }, Cmd.none )
+
+        ToggleUserMenu ->
+            ( { model | userMenuOpen = not model.userMenuOpen }, Cmd.none )
+
         NoOp ->
             ( model, Cmd.none )
 
@@ -505,31 +500,154 @@ computeTotals beers lines =
 
 view : Model -> Html Msg
 view model =
-    let
-        container =
-            case model.userEmail of
-                "" ->
-                    renderLoginForm model
+    case model.userEmail of
+        "" ->
+            renderLoginView model
 
-                _ ->
-                    renderReservationTable model
-    in
-    div [ class "wrapper" ]
-        [ h1 [] [ "⛽ " |> text ]
-        , container
+        _ ->
+            renderApp model
+
+
+renderUserConnected model =
+    nav [ class "bg-gray-800" ]
+        [ div [ class "max-w-7xl mx-auto px-2 sm:px-6 lg:px-8" ]
+            [ div [ class "relative flex items-center justify-between h-16" ]
+                [ div [ class "absolute inset-y-0 left-0 flex items-center sm:hidden" ]
+                    [ button [ attribute "aria-controls" "mobile-menu", attribute "aria-expanded" "false", class "inline-flex items-center justify-center p-2 rounded-md text-gray-400 hover:text-white hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white", type_ "button" ]
+                        [ span [ class "sr-only" ]
+                            [ text "Open main menu" ]
+                        ]
+                    ]
+                , div [ class "flex-1 flex items-center justify-center sm:items-stretch sm:justify-start" ]
+                    [ div [ class "hidden sm:block sm:ml-6" ]
+                        [ div [ class "flex space-x-4" ]
+                            [ a [ attribute "aria-current" "page", class "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
+                                [ text "Dashboard" ]
+                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
+                                [ text "Team" ]
+                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
+                                [ text "Projects" ]
+                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
+                                [ text "Calendar" ]
+                            ]
+                        ]
+                    ]
+                , let
+                    transition =
+                        if model.userMenuOpen then
+                            "opacity-100 scale-100"
+
+                        else
+                            "opacity-0 scale-95"
+                  in
+                  div [ class "absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0" ]
+                    [ div [ class "ml-3 relative" ]
+                        [ div []
+                            [ button [ onClick ToggleUserMenu, attribute "aria-expanded" "false", attribute "aria-haspopup" "true", class "bg-gray-800 flex text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-white", id "user-menu-button", type_ "button" ]
+                                [ span [ class "sr-only" ]
+                                    [ text "Open user menu" ]
+                                , img [ alt "", class "h-8 w-8 rounded-full", src ("https://robohash.org/" ++ (model.userEmail |> Murmur3.hashString 1234 |> String.fromInt) ++ "?set=set4") ]
+                                    []
+                                ]
+                            ]
+                        , div [ attribute "aria-labelledby" "user-menu-button", attribute "aria-orientation" "vertical", class ("origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-40 " ++ transition), attribute "role" "menu", attribute "tabindex" "-1" ]
+                            [ a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-0", attribute "role" "menuitem", attribute "tabindex" "-1" ]
+                                [ text "Your Profile" ]
+                            , a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-1", attribute "role" "menuitem", attribute "tabindex" "-1" ]
+                                [ text "Settings" ]
+                            , a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-2", attribute "role" "menuitem", attribute "tabindex" "-1" ]
+                                [ text "Sign out" ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        , div [ class "sm:hidden", id "mobile-menu" ]
+            [ div [ class "px-2 pt-2 pb-3 space-y-1" ]
+                [ a [ attribute "aria-current" "page", class "bg-gray-900 text-white block px-3 py-2 rounded-md text-base font-medium", href "#" ]
+                    [ text "Dashboard" ]
+                , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium", href "#" ]
+                    [ text "Team" ]
+                , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium", href "#" ]
+                    [ text "Projects" ]
+                , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white block px-3 py-2 rounded-md text-base font-medium", href "#" ]
+                    [ text "Calendar" ]
+                ]
+            ]
         ]
 
 
-renderLoginForm : Model -> Html Msg
-renderLoginForm model =
-    h1 [ class "text-3xl font-bold underline" ] [ text "Toupi" ]
+renderApp model =
+    div [ class "wrapper" ]
+        [ renderUserConnected model
+        , renderReservationTable model
+        ]
+
+
+renderLoginView : a -> Html Msg
+renderLoginView model =
+    section
+        [ class "h-screen"
+        ]
+        [ div
+            [ class "px-6 h-full text-gray-800"
+            ]
+            [ div
+                [ class "flex xl:justify-center lg:justify-between justify-center items-center flex-wrap h-full g-6"
+                ]
+                [ div
+                    [ class "grow-0 shrink-1 md:shrink-0 basis-auto xl:w-6/12 lg:w-6/12 md:w-9/12 mb-12 md:mb-0"
+                    ]
+                    [ img
+                        [ src "having-fun.png"
+                        , class "w-full"
+                        , alt "Sample image"
+                        ]
+                        []
+                    ]
+                , div
+                    [ class "xl:ml-20 xl:w-5/12 lg:w-5/12 md:w-8/12 mb-12 md:mb-0"
+                    ]
+                    [ h2 [ class "text-xl" ] [ text "Connectez-vous" ]
+                    , Html.form [ onSubmit SubmitLoginForm ]
+                        [ div
+                            [ class "flex items-center my-4 before:flex-1 before:border-t before:border-gray-300 before:mt-0.5 after:flex-1 after:border-t after:border-gray-300 after:mt-0.5"
+                            ]
+                            []
+                        , {- Email input -}
+                          div
+                            [ class "mb-6"
+                            ]
+                            [ input
+                                [ type_ "text"
+                                , class "form-control block w-full px-4 py-2 text-xl font-normal text-gray-700 bg-white bg-clip-padding border border-solid border-gray-300 rounded transition ease-in-out m-0 focus:text-gray-700 focus:bg-white focus:border-blue-600 focus:outline-none"
+                                , id "exampleFormControlInput2"
+                                , placeholder "Adresse email"
+                                , onInput UpdateLoginFormEmail
+                                ]
+                                []
+                            ]
+                        , div
+                            [ class "text-center lg:text-left"
+                            ]
+                            [ button
+                                [ type_ "button"
+                                , class "inline-block px-7 py-3 bg-blue-600 text-white font-medium text-sm leading-snug uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out"
+                                ]
+                                [ text "Login" ]
+                            ]
+                        ]
+                    ]
+                ]
+            ]
+        ]
 
 
 renderReservationTable : Model -> Html Msg
 renderReservationTable model =
     let
         headerLine header =
-            th [ class (header |> String.toLower) ] [ header |> text ]
+            th [ class ((header |> String.toLower) ++ "px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider") ] [ header |> text ]
 
         lines =
             combineAndSort model.brews model.reservations model.inventories
@@ -561,18 +679,23 @@ renderReservationTable model =
             div [ class "empty" ] [ a [ onClick (CreateInventory model.now) ] [ "Aucune donnée. Peut-être voulez vous faire un état des stocks" |> text ] ]
 
         _ ->
-            table [ class "table table-wrapper" ]
-                [ thead []
-                    [ tr []
-                        (List.concat
-                            [ [ "", "Date", "Nom" ] |> List.map headerLine
-                            , model.beers |> List.map (\beer -> th [ class "move", colspan 2 ] [ beer ++ " (dispo)" |> text ])
-                            , [ "Notes", "Gobelets" ] |> List.map headerLine
-                            , [ renderLinesToDisplay model ]
-                            ]
-                        )
+            div []
+                [ p [ class "p-8" ]
+                    [ "Voici l'ensemble des réservations de fûts faites jusqu'ici !" |> text ]
+                , table
+                    [ class "min-w-full leading-normal" ]
+                    [ thead []
+                        [ tr []
+                            (List.concat
+                                [ [ "", "Type", "Date", "Nom" ] |> List.map headerLine
+                                , model.beers |> List.map (\beer -> th [ class "px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider", colspan 2 ] [ beer ++ " (dispo)" |> text ])
+                                , [ "Notes", "Gobelets" ] |> List.map headerLine
+                                , [ renderLinesToDisplay model ]
+                                ]
+                            )
+                        ]
+                    , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
                     ]
-                , Keyed.node "tbody" [] (linesWithTotals |> List.map (viewLine model))
                 ]
 
 
@@ -582,7 +705,7 @@ renderLinesToDisplay model =
         number =
             model.pastWeeksToDisplay |> String.fromInt
     in
-    th [ class "more" ] [ a [ onClick IncreaseDisplayedPastWeeks ] [ "Voir plus (" ++ number ++ ")" |> text ] ]
+    th [ class "more px-5 py-3 border-b-2 border-gray-200 bg-gray-100 text-left text-xs font-semibold text-gray-700 uppercase tracking-wider" ] [ a [ onClick IncreaseDisplayedPastWeeks ] [ "Voir plus (" ++ number ++ ")" |> text ] ]
 
 
 renderNothing : Html msg
@@ -645,7 +768,7 @@ renderTotalCell total =
 
 renderActions : Time.Posix -> Html Msg
 renderActions posix =
-    td [ class "actions" ]
+    td [ class "actions px-5 py-5 border-b border-gray-200 bg-white text-sm" ]
         [ ul [ class "creation-links" ]
             [ li [] [ a [ onClick (CreateBrew posix) ] [ "+ enfûtage" |> text ] ]
             , li [] [ a [ onClick (CreateInventory posix) ] [ "= inventaire" |> text ] ]
@@ -654,14 +777,55 @@ renderActions posix =
         ]
 
 
+renderLineType : String -> Html msg
+renderLineType type_ =
+    let
+        text_color =
+            case type_ of
+                "Mis en fûts" ->
+                    "text-green-900"
+
+                "Inventaire" ->
+                    "text-orange-700"
+
+                "Réservation" ->
+                    "text-yellow-900"
+
+                _ ->
+                    "text-green-900"
+
+        bg_color =
+            case type_ of
+                "Mis en fûts" ->
+                    "bg-green-200"
+
+                -- class="bg-orange-200 text-orange-900"
+                "Inventaire" ->
+                    "bg-orange-200"
+
+                "Réservation" ->
+                    "bg-yellow-200"
+
+                _ ->
+                    "bg-green-200"
+    in
+    span [ class ("relative inline-block px-3 py-1 font-semibold " ++ text_color ++ " leading-tight") ]
+        [ span [ attribute "aria-hidden" "", class ("absolute inset-0 " ++ bg_color ++ " opacity-50 rounded-full") ]
+            []
+        , span [ class "relative" ]
+            [ text type_ ]
+        ]
+
+
 viewInventoryLine : Model -> Inventory -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewInventoryLine model inventory totals uuid =
     tr
-        [ class "inventaire" ]
+        [ class "inventaire px-5 py-5 border-b border-gray-200 bg-white text-sm" ]
         (List.concat
             [ [ renderActions inventory.date
+              , td [] [ renderLineType "Inventaire" ]
               , td [] [ renderDateInput inventory.date (InventoryUpdateDate uuid) uuid ]
-              , td [] [ "Inventaire" |> text ]
+              , td [] []
               ]
             , model.beers
                 |> List.map
@@ -678,7 +842,15 @@ viewInventoryLine model inventory totals uuid =
                             total =
                                 totals |> Dict.get beer |> Maybe.withDefault 0
                         in
-                        [ td [ class "move" ] [ input [ type_ "text", value displayableValue, onChange (InventoryUpdateQuantity uuid beer) ] [] ]
+                        [ td [ class "move text-right" ]
+                            [ input
+                                [ type_ "text"
+                                , value displayableValue
+                                , onChange (InventoryUpdateQuantity uuid beer)
+                                , class "text-right"
+                                ]
+                                []
+                            ]
                         , renderTotalCell total
                         ]
                     )
@@ -693,11 +865,12 @@ viewInventoryLine model inventory totals uuid =
 
 viewBrewLine : Model -> Brew -> Dict String Int -> Uuid.Uuid -> Html Msg
 viewBrewLine model brew totals uuid =
-    tr [ class "mise-en-futs" ]
+    tr [ class "mise-en-futs px-5 py-5 border-b border-gray-200 bg-white text-sm" ]
         (List.concat
             [ [ renderActions brew.date
+              , td [] [ renderLineType "Enfûtage" ]
               , td [] [ renderDateInput brew.date (BrewUpdateDate uuid) uuid ]
-              , td []
+              , td [ class "text-left" ]
                     [ select [ onChange (BrewUpdateSelectedBeer uuid) ]
                         (model.beers
                             |> List.map
@@ -726,9 +899,15 @@ viewBrewLine model brew totals uuid =
                                 else
                                     0
                         in
-                        [ td [ class "move" ]
+                        [ td [ class "move text-right" ]
                             [ if beer == brew.beer then
-                                input [ type_ "text", value ("+" ++ String.fromInt quantity), onChange (BrewUpdateQuantity uuid) ] []
+                                input
+                                    [ type_ "text"
+                                    , value ("+" ++ String.fromInt quantity)
+                                    , onChange (BrewUpdateQuantity uuid)
+                                    , class "text-right"
+                                    ]
+                                    []
 
                               else
                                 "" |> text
@@ -753,16 +932,17 @@ viewReservationLine model reservation totals uuid =
 
         class_ =
             if isEmpty then
-                "empty"
+                "empty "
 
             else
                 ""
     in
-    tr [ id (uuid |> Uuid.toString), class class_ ]
+    tr [ id (uuid |> Uuid.toString), class (class_ ++ "px-5 py-5 border-b border-gray-200 bg-white text-sm") ]
         (List.concat
             [ [ renderActions reservation.date
+              , td [] [ renderLineType "Réservation" ]
               , td [] [ renderDateInput reservation.date (ReservationUpdateDate uuid) uuid ]
-              , td [] [ input [ id ((uuid |> Uuid.toString) ++ "-name"), type_ "text", value reservation.name, onChange (ReservationUpdateName uuid) ] [] ]
+              , td [ class "text-left" ] [ input [ id ((uuid |> Uuid.toString) ++ "-name"), type_ "text", value reservation.name, onChange (ReservationUpdateName uuid) ] [] ]
               ]
             , model.beers
                 |> List.map
@@ -782,7 +962,7 @@ viewReservationLine model reservation totals uuid =
                             total =
                                 totals |> Dict.get beer |> Maybe.withDefault 0
                         in
-                        [ td [ class "move" ] [ input [ type_ "text", value stringValue, onChange (ReservationUpdateQuantity uuid beer) ] [] ]
+                        [ td [ class "text-right" ] [ input [ class "text-right", type_ "text", value stringValue, onChange (ReservationUpdateQuantity uuid beer) ] [] ]
                         , renderTotalCell total
                         ]
                     )
@@ -847,6 +1027,7 @@ subscriptions _ =
         [ replaceReservations ReplaceReservations
         , replaceInventories ReplaceInventories
         , replaceBrews ReplaceBrews
+        , loginSuccess LoginSuccess
         ]
 
 
@@ -858,6 +1039,12 @@ port storeData : Json.Encode.Value -> Cmd msg
 
 
 port fetchData : String -> Cmd msg
+
+
+port startLogin : String -> Cmd msg
+
+
+port loginSuccess : (String -> msg) -> Sub msg
 
 
 port replaceReservations : (String -> msg) -> Sub msg
