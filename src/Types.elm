@@ -22,6 +22,7 @@ type alias Model =
     , now : Time.Posix
     , scrollTo : ScrollTo.State
     , pastWeeksToDisplay : Int
+    , userEmail : String
     }
 
 

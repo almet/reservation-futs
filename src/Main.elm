@@ -33,8 +33,13 @@ init flags =
       , now = Time.millisToPosix 0
       , scrollTo = ScrollTo.init
       , pastWeeksToDisplay = 2
+      , userEmail = ""
       }
-    , getTime
+    , Cmd.batch
+        [ getTime
+
+        --, fetchData "yeah"
+        ]
     )
 
 
@@ -500,10 +505,24 @@ computeTotals beers lines =
 
 view : Model -> Html Msg
 view model =
+    let
+        container =
+            case model.userEmail of
+                "" ->
+                    renderLoginForm model
+
+                _ ->
+                    renderReservationTable model
+    in
     div [ class "wrapper" ]
         [ h1 [] [ "⛽ " |> text ]
-        , renderReservationTable model
+        , container
         ]
+
+
+renderLoginForm : Model -> Html Msg
+renderLoginForm model =
+    h1 [ class "text-3xl font-bold underline" ] [ text "Toupi" ]
 
 
 renderReservationTable : Model -> Html Msg
@@ -611,6 +630,7 @@ renderDateInput date event uuid =
         []
 
 
+renderTotalCell : Int -> Html msg
 renderTotalCell total =
     let
         polarity =
@@ -623,6 +643,7 @@ renderTotalCell total =
     td [ class ("total " ++ polarity) ] [ "(" ++ String.fromInt total ++ ")" |> text ]
 
 
+renderActions : Time.Posix -> Html Msg
 renderActions posix =
     td [ class "actions" ]
         [ ul [ class "creation-links" ]
@@ -787,10 +808,12 @@ viewReservationLine model reservation totals uuid =
         )
 
 
+renderDeleteLink : msg -> Html msg
 renderDeleteLink event =
     a [ class "delete", onClick event ] [ text "✘" ]
 
 
+getTime : Cmd Msg
 getTime =
     Time.now
         |> Task.perform OnTime
@@ -819,7 +842,7 @@ focusId uuid =
 
 
 subscriptions : Model -> Sub Msg
-subscriptions model =
+subscriptions _ =
     Sub.batch
         [ replaceReservations ReplaceReservations
         , replaceInventories ReplaceInventories
@@ -832,6 +855,9 @@ subscriptions model =
 
 
 port storeData : Json.Encode.Value -> Cmd msg
+
+
+port fetchData : String -> Cmd msg
 
 
 port replaceReservations : (String -> msg) -> Sub msg

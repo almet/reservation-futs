@@ -5,6 +5,11 @@
   More context in the issue:
     https://github.com/halfzebra/create-elm-app/issues/320
 */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
 [data-elm-hot="true"] {
   height: inherit;
 }

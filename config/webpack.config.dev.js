@@ -212,6 +212,7 @@ module.exports = {
               // https://github.com/facebook/create-react-app/issues/2677
               postcssOptions: {
                 plugins: () => [
+                  require('tailwindcss'),
                   require('postcss-flexbugs-fixes'),
                   autoprefixer({
                     flexbox: 'no-2009',
