@@ -1,8 +1,4 @@
-- Start the app with no data
-- Let the Elm part request some data via ports
-- The port answers with data from the network 
-
-- Gérer le flux d'authentification depuis Elm.
+- Améliorer le flux d'authentification
 - Gérer l'accès aux bases de données en fonction de l'authentification.
 - Faire des sauvegardes de données tous les jours (en local ? en ligne ?)
 - Demander les bières à gérer au démarrage.

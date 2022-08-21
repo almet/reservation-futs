@@ -20,6 +20,7 @@ const sendToPortOnChanges = function (name, port) {
 
 const getUserEmail = function () {
   let user = supabase.auth.user();
+  console.log("User", user);
   if (user) {
     return user.email;
   }
@@ -62,12 +63,14 @@ app.ports.startLogin.subscribe(async function (email) {
 });
 
 app.ports.fetchData.subscribe(async function () {
-  let data = await getData();
-  const val = (v) => { return v.data.data; }
-  console.log(data);
-  app.ports.replaceReservations.send(val(data.reservations));
-  app.ports.replaceBrews.send(val(data.brews));
-  app.ports.replaceInventories.send(val(data.inventories));
+  if (getUserEmail() != "") {
+    let data = await getData();
+    const val = (v) => { return v.data.data; }
+    console.log(data);
+    app.ports.replaceReservations.send(val(data.reservations));
+    app.ports.replaceBrews.send(val(data.brews));
+    app.ports.replaceInventories.send(val(data.inventories));
+  }
 });
 
 sendToPortOnChanges("reservations", app.ports.replaceReservations);

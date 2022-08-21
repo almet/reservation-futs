@@ -53,6 +53,7 @@ type Msg
     | UpdateLoginFormEmail String
     | SubmitLoginForm
     | LoginSuccess String
+    | Logout
     | ToggleUserMenu
     | DisplayNewLineSelect Bool
     | BrewUpdateDate Uuid.Uuid String
@@ -427,7 +428,10 @@ update msg model =
             ( model, startLogin model.loginFormEmail )
 
         LoginSuccess email ->
-            ( { model | userEmail = email }, Cmd.none )
+            ( { model | userEmail = email }, fetchData email )
+
+        Logout ->
+            ( { model | userEmail = "", userMenuOpen = False }, Cmd.none )
 
         ToggleUserMenu ->
             ( { model | userMenuOpen = not model.userMenuOpen }, Cmd.none )
@@ -519,26 +523,14 @@ renderUserConnected model =
                         ]
                     ]
                 , div [ class "flex-1 flex items-center justify-center sm:items-stretch sm:justify-start" ]
-                    [ div [ class "hidden sm:block sm:ml-6" ]
-                        [ div [ class "flex space-x-4" ]
-                            [ a [ attribute "aria-current" "page", class "bg-gray-900 text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
-                                [ text "Dashboard" ]
-                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
-                                [ text "Team" ]
-                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
-                                [ text "Projects" ]
-                            , a [ class "text-gray-300 hover:bg-gray-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium", href "#" ]
-                                [ text "Calendar" ]
-                            ]
-                        ]
-                    ]
+                    []
                 , let
                     transition =
                         if model.userMenuOpen then
-                            "opacity-100 scale-100"
+                            ""
 
                         else
-                            "opacity-0 scale-95"
+                            "hidden"
                   in
                   div [ class "absolute inset-y-0 right-0 flex items-center pr-2 sm:static sm:inset-auto sm:ml-6 sm:pr-0" ]
                     [ div [ class "ml-3 relative" ]
@@ -552,11 +544,9 @@ renderUserConnected model =
                             ]
                         , div [ attribute "aria-labelledby" "user-menu-button", attribute "aria-orientation" "vertical", class ("origin-top-right absolute right-0 mt-2 w-48 rounded-md shadow-lg py-1 bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-40 " ++ transition), attribute "role" "menu", attribute "tabindex" "-1" ]
                             [ a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-0", attribute "role" "menuitem", attribute "tabindex" "-1" ]
-                                [ text "Your Profile" ]
-                            , a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-1", attribute "role" "menuitem", attribute "tabindex" "-1" ]
-                                [ text "Settings" ]
-                            , a [ class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-2", attribute "role" "menuitem", attribute "tabindex" "-1" ]
-                                [ text "Sign out" ]
+                                [ text model.userEmail ]
+                            , a [ onClick Logout, class "block px-4 py-2 text-sm text-gray-700", href "#", id "user-menu-item-2", attribute "role" "menuitem", attribute "tabindex" "-1" ]
+                                [ text "Se déconnecter" ]
                             ]
                         ]
                     ]
@@ -631,7 +621,8 @@ renderLoginView model =
                             [ class "text-center lg:text-left"
                             ]
                             [ button
-                                [ type_ "button"
+                                [ onClick SubmitLoginForm
+                                , type_ "button"
                                 , class "inline-block px-7 py-3 bg-blue-600 text-white font-medium text-sm leading-snug uppercase rounded shadow-md hover:bg-blue-700 hover:shadow-lg focus:bg-blue-700 focus:shadow-lg focus:outline-none focus:ring-0 active:bg-blue-800 active:shadow-lg transition duration-150 ease-in-out"
                                 ]
                                 [ text "Login" ]
